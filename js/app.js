@@ -1,20 +1,41 @@
-import { ApiService } from "../services/api-service.js";
+import {
+  ApiService
+} from "../services/api-service.js";
 
-const api = new ApiService();
+const api =
+  new ApiService();
 
 const state = {
   user: null,
+
   actividades: [],
+
   resumen: [],
+
   catalogos: [],
+
   delegaciones: [],
+
+  activityOptions: [],
+
   notificaciones: [],
-  mapView: null
+
+  mapView: null,
+
+  formMapView: null,
+
+  selectedPoint: null,
+
+  editingObjectId: null
 };
 
-const $ = (id) => document.getElementById(id);
+const $ = (id) =>
+  document.getElementById(id);
 
-document.addEventListener("DOMContentLoaded", initialize);
+document.addEventListener(
+  "DOMContentLoaded",
+  initialize
+);
 
 /* =========================================================
    INICIO
@@ -25,11 +46,14 @@ async function initialize() {
 
   if (api.token) {
     try {
-      const session = await api.me();
+      const session =
+        await api.me();
 
-      state.user = session.user;
+      state.user =
+        session.user;
 
       showMain();
+
       await loadData();
 
       return;
@@ -42,22 +66,47 @@ async function initialize() {
 }
 
 function bindEvents() {
-  $("login-form").addEventListener("submit", login);
-  $("btn-logout").addEventListener("click", logout);
-  $("btn-refresh").addEventListener("click", loadData);
-  $("btn-toggle-sidebar").addEventListener("click", toggleSidebar);
-  $("btn-open-notifications").addEventListener(
-    "click",
-    openNotifications
-  );
-  $("btn-close-notifications").addEventListener(
-    "click",
-    closeNotifications
-  );
-  $("drawer-backdrop").addEventListener(
-    "click",
-    closeNotifications
-  );
+  $("login-form")
+    .addEventListener(
+      "submit",
+      login
+    );
+
+  $("btn-logout")
+    .addEventListener(
+      "click",
+      logout
+    );
+
+  $("btn-refresh")
+    .addEventListener(
+      "click",
+      loadData
+    );
+
+  $("btn-toggle-sidebar")
+    .addEventListener(
+      "click",
+      toggleSidebar
+    );
+
+  $("btn-open-notifications")
+    .addEventListener(
+      "click",
+      openNotifications
+    );
+
+  $("btn-close-notifications")
+    .addEventListener(
+      "click",
+      closeNotifications
+    );
+
+  $("drawer-backdrop")
+    .addEventListener(
+      "click",
+      closeNotifications
+    );
 }
 
 /* =========================================================
@@ -67,26 +116,42 @@ function bindEvents() {
 async function login(event) {
   event.preventDefault();
 
-  const username = $("login-username").value.trim();
-  const password = $("login-password").value;
+  const username =
+    $("login-username")
+      .value
+      .trim();
 
-  const button = $("btn-login");
-  const original = button.textContent;
+  const password =
+    $("login-password")
+      .value;
+
+  const button =
+    $("btn-login");
+
+  const original =
+    button.textContent;
 
   button.disabled = true;
-  button.textContent = "Ingresando...";
+
+  button.textContent =
+    "Ingresando...";
 
   try {
-    const result = await api.login(
-      username,
-      password
+    const result =
+      await api.login(
+        username,
+        password
+      );
+
+    api.setToken(
+      result.token
     );
 
-    api.setToken(result.token);
+    state.user =
+      result.user;
 
-    state.user = result.user;
-
-    $("login-password").value = "";
+    $("login-password")
+      .value = "";
 
     showMain();
 
@@ -98,18 +163,30 @@ async function login(event) {
     );
   } finally {
     button.disabled = false;
-    button.textContent = original;
+
+    button.textContent =
+      original;
   }
 }
 
 function showLogin() {
-  $("login-view").classList.remove("hidden");
-  $("main-view").classList.add("hidden");
+  $("login-view")
+    .classList
+    .remove("hidden");
+
+  $("main-view")
+    .classList
+    .add("hidden");
 }
 
 function showMain() {
-  $("login-view").classList.add("hidden");
-  $("main-view").classList.remove("hidden");
+  $("login-view")
+    .classList
+    .add("hidden");
+
+  $("main-view")
+    .classList
+    .remove("hidden");
 
   const name =
     state.user?.name ||
@@ -120,21 +197,30 @@ function showMain() {
     state.user?.role ||
     "Sin rol";
 
-  $("sidebar-user-name").textContent = name;
-  $("sidebar-user-role").textContent = role;
-  $("sidebar-avatar").textContent =
-    name.charAt(0).toUpperCase();
+  $("sidebar-user-name")
+    .textContent = name;
 
-  $("welcome-title").textContent =
-    `Bienvenido, ${name}`;
+  $("sidebar-user-role")
+    .textContent = role;
 
-  $("page-scope").textContent = [
-    state.user?.region,
-    state.user?.delegation,
-    state.user?.program
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  $("sidebar-avatar")
+    .textContent =
+      name
+        .charAt(0)
+        .toUpperCase();
+
+  $("welcome-title")
+    .textContent =
+      `Bienvenido, ${name}`;
+
+  $("page-scope")
+    .textContent = [
+      state.user?.region,
+      state.user?.delegation,
+      state.user?.program
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
   buildNavigation();
 }
@@ -163,7 +249,9 @@ function toggleSidebar() {
 
 function buildNavigation() {
   const role =
-    normalize(state.user?.role);
+    normalize(
+      state.user?.role
+    );
 
   const items = [
     {
@@ -173,16 +261,21 @@ function buildNavigation() {
     }
   ];
 
-  if (role.includes("DELEG")) {
+  if (
+    role.includes("DELEG")
+  ) {
     items.push(
       {
         id: "delegacion",
-        label: "Registrar actividad",
+        label:
+          "Registrar actividad",
         icon: "➕"
       },
+
       {
         id: "mis-registros",
-        label: "Mis registros",
+        label:
+          "Mis registros",
         icon: "📋"
       }
     );
@@ -196,7 +289,8 @@ function buildNavigation() {
   ) {
     items.push({
       id: "revision",
-      label: "Revisión y validación",
+      label:
+        "Revisión y validación",
       icon: "✅"
     });
   }
@@ -222,55 +316,76 @@ function buildNavigation() {
     });
   }
 
-  $("sidebar-nav").innerHTML = items
-    .map(
-      (item, index) => `
-        <button
-          class="nav-item ${
-            index === 0
-              ? "active"
-              : ""
-          }"
-          data-page="${item.id}"
-        >
-          <span class="nav-icon">
-            ${item.icon}
-          </span>
+  $("sidebar-nav")
+    .innerHTML =
+      items
+        .map(
+          (
+            item,
+            index
+          ) => `
+            <button
+              class="nav-item ${
+                index === 0
+                  ? "active"
+                  : ""
+              }"
+              data-page="${item.id}"
+            >
+              <span class="nav-icon">
+                ${item.icon}
+              </span>
 
-          <span class="nav-label">
-            ${item.label}
-          </span>
-        </button>
-      `
-    )
-    .join("");
+              <span class="nav-label">
+                ${item.label}
+              </span>
+            </button>
+          `
+        )
+        .join("");
 
   document
-    .querySelectorAll(".nav-item")
-    .forEach((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          document
-            .querySelectorAll(".nav-item")
-            .forEach((item) =>
-              item.classList.remove(
-                "active"
-              )
-            );
+    .querySelectorAll(
+      ".nav-item"
+    )
+    .forEach(
+      (button) => {
+        button
+          .addEventListener(
+            "click",
+            () => {
+              document
+                .querySelectorAll(
+                  ".nav-item"
+                )
+                .forEach(
+                  (item) =>
+                    item
+                      .classList
+                      .remove(
+                        "active"
+                      )
+                );
 
-          button
-            .classList
-            .add("active");
+              button
+                .classList
+                .add(
+                  "active"
+                );
 
-          navigate(
-            button.dataset.page,
-            button.textContent.trim()
+              navigate(
+                button.dataset.page,
+                button.textContent.trim()
+              );
+            }
           );
-        }
-      );
-    });
+      }
+    );
 }
+
+/* =========================================================
+   NAVEGACIÓN
+========================================================= */
 
 function navigate(
   pageId,
@@ -278,11 +393,16 @@ function navigate(
 ) {
   document
     .querySelectorAll(".page")
-    .forEach((page) =>
-      page
-        .classList
-        .remove("active")
+    .forEach(
+      (page) =>
+        page
+          .classList
+          .remove("active")
     );
+
+  $("page-title")
+    .textContent =
+      title;
 
   if (
     pageId === "dashboard"
@@ -291,9 +411,7 @@ function navigate(
       .classList
       .add("active");
 
-    $("page-title")
-      .textContent =
-        "Panel principal";
+    renderDashboard();
 
     return;
   }
@@ -302,17 +420,55 @@ function navigate(
     .classList
     .add("active");
 
-  $("page-title")
-    .textContent =
-      title;
+  if (
+    pageId === "delegacion"
+  ) {
+    renderActivityForm();
 
-  $("coming-title")
-    .textContent =
-      title;
+    return;
+  }
 
-  $("coming-description")
-    .textContent =
-      "El acceso ya está conectado al backend. Este módulo se incorporará en la siguiente entrega.";
+  if (
+    pageId ===
+    "mis-registros"
+  ) {
+    renderMyRecords();
+
+    return;
+  }
+
+  if (
+    pageId === "revision"
+  ) {
+    renderRegionalModule();
+
+    return;
+  }
+
+  renderComing(
+    title
+  );
+}
+
+function renderComing(title) {
+  $("coming-page")
+    .innerHTML = `
+      <article
+        class="panel-card empty-state"
+      >
+        <div class="empty-icon">
+          🛠️
+        </div>
+
+        <h2>
+          ${escapeHtml(title)}
+        </h2>
+
+        <p>
+          Este módulo será activado en la siguiente etapa.
+        </p>
+      </article>
+    `;
 }
 
 /* =========================================================
@@ -325,13 +481,16 @@ async function loadData() {
       activities,
       summary,
       catalogs,
-      delegations
-    ] = await Promise.all([
-      api.getActivities(),
-      api.getSummary(),
-      api.getCatalogs(),
-      api.getDelegations()
-    ]);
+      delegations,
+      activityOptions
+    ] =
+      await Promise.all([
+        api.getActivities(),
+        api.getSummary(),
+        api.getCatalogs(),
+        api.getDelegations(),
+        api.getActivityOptions()
+      ]);
 
     state.actividades =
       activities.features || [];
@@ -345,13 +504,18 @@ async function loadData() {
     state.delegaciones =
       delegations.features || [];
 
+    state.activityOptions =
+      activityOptions.options || [];
+
     state.notificaciones =
       createDerivedNotifications();
 
-    renderAll();
+    renderDashboard();
+
+    renderNotifications();
 
     showToast(
-      "Información real actualizada desde ArcGIS."
+      "Información actualizada."
     );
   } catch (error) {
     showToast(
@@ -361,267 +525,67 @@ async function loadData() {
   }
 }
 
-function renderAll() {
+/* =========================================================
+   DATOS
+========================================================= */
+
+function getRows() {
+  return state.actividades.map(
+    (feature) => ({
+      ...feature.attributes,
+
+      __geometry:
+        feature.geometry || null
+    })
+  );
+}
+
+function isHistorical(row) {
+  return String(
+    row.archivo_origen || ""
+  ).trim() !== "";
+}
+
+function getObjectId(row) {
+  return Number(
+    row.OBJECTID
+  );
+}
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
+function renderDashboard() {
   ensureActivityBreakdownPanel();
 
   renderKpis();
+
   renderProgramSummary();
+
   renderActivityBreakdown();
+
   renderStatusSummary();
-  renderNotifications();
+
   renderMap();
 }
-
-/* =========================================================
-   FILAS DE ACTIVIDADES
-========================================================= */
-
-function getActivityRows() {
-  return state.actividades.map(
-    (feature) =>
-      feature.attributes || {}
-  );
-}
-
-function firstValue(
-  row,
-  fields,
-  fallback = ""
-) {
-  for (
-    const field of fields
-  ) {
-    const value =
-      row?.[field];
-
-    if (
-      value !== undefined &&
-      value !== null &&
-      String(value).trim() !== ""
-    ) {
-      return value;
-    }
-  }
-
-  return fallback;
-}
-
-function numericValue(
-  row,
-  fields
-) {
-  const value =
-    firstValue(
-      row,
-      fields,
-      0
-    );
-
-  const parsed =
-    Number(value);
-
-  return Number.isFinite(parsed)
-    ? parsed
-    : 0;
-}
-
-/* =========================================================
-   CAMPOS REALES
-========================================================= */
-
-function getProgram(row) {
-  return String(
-    firstValue(
-      row,
-      [
-        "programa",
-        "Programa",
-        "PROGRAMA"
-      ],
-      ""
-    )
-  ).trim();
-}
-
-function getActivity(row) {
-  return String(
-    firstValue(
-      row,
-      [
-        "actividad",
-        "Actividad",
-        "ACTIVIDAD",
-        "actividad_realizada"
-      ],
-      ""
-    )
-  ).trim();
-}
-
-function getMeta(row) {
-  return numericValue(
-    row,
-    [
-      "meta",
-      "Meta",
-      "META"
-    ]
-  );
-}
-
-function getAdvance(row) {
-  return numericValue(
-    row,
-    [
-      "avance",
-      "Avance",
-      "AVANCE",
-      "avance_realizado"
-    ]
-  );
-}
-
-function getParticipants(row) {
-  return numericValue(
-    row,
-    [
-      "participantes",
-      "Participantes",
-      "PARTICIPANTES",
-      "cantidad_participantes"
-    ]
-  );
-}
-
-function getRegionalStatus(row) {
-  return normalize(
-    firstValue(
-      row,
-      [
-        "estado_verificacion_regional",
-        "estado_regional"
-      ],
-      ""
-    )
-  );
-}
-
-function getNationalStatus(row) {
-  return normalize(
-    firstValue(
-      row,
-      [
-        "estado_validacion",
-        "estado_nacional"
-      ],
-      ""
-    )
-  );
-}
-
-function getSourceFile(row) {
-  return String(
-    firstValue(
-      row,
-      [
-        "archivo_origen",
-        "Archivo origen",
-        "ARCHIVO_ORIGEN"
-      ],
-      ""
-    )
-  ).trim();
-}
-
-/* =========================================================
-   HISTÓRICOS Y FLUJO NUEVO
-========================================================= */
-
-function isHistoricalReviewed(row) {
-  return getSourceFile(row) !== "";
-}
-
-function workflowLabel(row) {
-  /*
-   * Todos los registros migrados desde Excel
-   * ya fueron revisados.
-   */
-  if (
-    isHistoricalReviewed(row)
-  ) {
-    return "Revisado";
-  }
-
-  const regional =
-    getRegionalStatus(row);
-
-  const national =
-    getNationalStatus(row);
-
-  /*
-   * Validado por Coordinación Nacional.
-   */
-  if (
-    national.includes("APROB") ||
-    national.includes("VALIDAD")
-  ) {
-    return "Validado nacional";
-  }
-
-  /*
-   * Observación nacional.
-   */
-  if (
-    national.includes("RECHAZ") ||
-    national.includes("OBSERV")
-  ) {
-    return "Observado nacional";
-  }
-
-  /*
-   * Devuelto por la Dirección Regional.
-   */
-  if (
-    regional.includes("DEVUEL") ||
-    regional.includes("OBSERV")
-  ) {
-    return "Devuelto regional";
-  }
-
-  /*
-   * La Dirección Regional ya revisó.
-   * Falta Coordinación Nacional.
-   */
-  if (
-    regional.includes("VERIFIC") ||
-    regional.includes("REVISAD")
-  ) {
-    return "Pendiente de validación nacional";
-  }
-
-  /*
-   * Todo registro nuevo creado desde PUMI
-   * debe iniciar pendiente de revisión regional.
-   */
-  return "Pendiente de revisión regional";
-}
-
-/* =========================================================
-   AGRUPACIÓN PROGRAMA + ACTIVIDAD
-========================================================= */
 
 function buildProgressRows() {
   const grouped =
     new Map();
 
   for (
-    const row of getActivityRows()
+    const row of getRows()
   ) {
     const program =
-      getProgram(row);
+      String(
+        row.programa || ""
+      ).trim();
 
     const activity =
-      getActivity(row);
+      String(
+        row.actividad || ""
+      ).trim();
 
     if (
       !program ||
@@ -630,26 +594,8 @@ function buildProgressRows() {
       continue;
     }
 
-    const normalizedProgram =
-      normalize(program);
-
-    const normalizedActivity =
-      normalize(activity);
-
-    if (
-      normalizedProgram === "PROGRAMA"
-    ) {
-      continue;
-    }
-
-    if (
-      normalizedActivity === "ACTIVIDAD"
-    ) {
-      continue;
-    }
-
     const key =
-      `${normalizedProgram}|||${normalizedActivity}`;
+      `${normalize(program)}|||${normalize(activity)}`;
 
     if (
       !grouped.has(key)
@@ -660,8 +606,7 @@ function buildProgressRows() {
           program,
           activity,
           meta: 0,
-          advance: 0,
-          records: 0
+          advance: 0
         }
       );
     }
@@ -669,67 +614,73 @@ function buildProgressRows() {
     const item =
       grouped.get(key);
 
-    item.meta +=
-      getMeta(row);
+    if (
+      isHistorical(row)
+    ) {
+      item.meta +=
+        numberValue(
+          row.meta
+        );
 
-    item.advance +=
-      getAdvance(row);
-
-    item.records += 1;
+      item.advance +=
+        numberValue(
+          row.avance
+        );
+    } else if (
+      isNationalApproved(row)
+    ) {
+      item.advance +=
+        numberValue(
+          row.avance_realizado
+        );
+    }
   }
 
   return [
     ...grouped.values()
-  ].map((item) => {
-    const pending =
-      Math.max(
-        item.meta -
-        item.advance,
-        0
-      );
+  ].map(
+    (item) => {
+      const pending =
+        Math.max(
+          item.meta -
+          item.advance,
+          0
+        );
 
-    const percentage =
-      item.meta > 0
-        ? (
-            item.advance /
-            item.meta
-          ) * 100
-        : 0;
+      const percentage =
+        item.meta > 0
+          ? (
+              item.advance /
+              item.meta
+            ) * 100
+          : 0;
 
-    return {
-      ...item,
-      pending,
-      percentage
-    };
-  });
+      return {
+        ...item,
+        pending,
+        percentage
+      };
+    }
+  );
 }
-
-/* =========================================================
-   INDICADORES
-========================================================= */
 
 function renderKpis() {
   const rows =
-    getActivityRows();
+    getRows();
 
-  const progressRows =
+  const progress =
     buildProgressRows();
 
-  const records =
-    rows.length;
-
   const meta =
-    progressRows.reduce(
-      (sum, row) =>
-        sum + row.meta,
-      0
+    sumBy(
+      progress,
+      "meta"
     );
 
   const advance =
-    progressRows.reduce(
-      (sum, row) =>
-        sum + row.advance,
-      0
+    sumBy(
+      progress,
+      "advance"
     );
 
   const pending =
@@ -748,36 +699,46 @@ function renderKpis() {
 
   const participants =
     rows.reduce(
-      (sum, row) =>
-        sum +
-        getParticipants(row),
+      (
+        total,
+        row
+      ) =>
+        total +
+        numberValue(
+          row.cantidad_participantes
+        ),
       0
     );
 
   const values = [
     [
       "Registros",
-      formatNumber(records)
+      rows.length
     ],
+
     [
       "Meta",
-      formatNumber(meta)
+      meta
     ],
+
     [
       "Avance",
-      formatNumber(advance)
+      advance
     ],
+
     [
       "Pendiente",
-      formatNumber(pending)
+      pending
     ],
+
     [
       "% avance",
       `${percentage.toFixed(1)}%`
     ],
+
     [
       "Participantes",
-      formatNumber(participants)
+      participants
     ]
   ];
 
@@ -785,14 +746,21 @@ function renderKpis() {
     .innerHTML =
       values
         .map(
-          ([label, value]) => `
-            <article class="kpi-card">
+          ([
+            label,
+            value
+          ]) => `
+            <article
+              class="kpi-card"
+            >
               <span>
-                ${escapeHtml(label)}
+                ${label}
               </span>
 
               <strong>
-                ${escapeHtml(value)}
+                ${formatNumber(
+                  value
+                )}
               </strong>
             </article>
           `
@@ -800,43 +768,42 @@ function renderKpis() {
         .join("");
 }
 
-/* =========================================================
-   RESUMEN POR PROGRAMA
-========================================================= */
-
 function renderProgramSummary() {
   const grouped = {};
 
   for (
     const row of buildProgressRows()
   ) {
-    const program =
-      row.program;
-
     if (
-      !grouped[program]
+      !grouped[row.program]
     ) {
-      grouped[program] = {
+      grouped[row.program] = {
         meta: 0,
-        advance: 0,
-        pending: 0
+        advance: 0
       };
     }
 
-    grouped[program].meta +=
+    grouped[row.program].meta +=
       row.meta;
 
-    grouped[program].advance +=
+    grouped[row.program].advance +=
       row.advance;
-
-    grouped[program].pending +=
-      row.pending;
   }
 
   const programs =
     Object.entries(grouped)
       .map(
-        ([program, data]) => {
+        ([
+          program,
+          data
+        ]) => {
+          const pending =
+            Math.max(
+              data.meta -
+              data.advance,
+              0
+            );
+
           const percentage =
             data.meta > 0
               ? (
@@ -847,116 +814,90 @@ function renderProgramSummary() {
 
           return {
             program,
-            meta: data.meta,
-            advance: data.advance,
-            pending: data.pending,
+            meta:
+              data.meta,
+            advance:
+              data.advance,
+            pending,
             percentage
           };
         }
-      )
-      .sort(
-        (a, b) =>
-          b.percentage -
-          a.percentage
       );
 
-  const container =
-    $("program-summary");
-
-  if (
-    !programs.length
-  ) {
-    container.innerHTML = `
-      <p class="page-scope">
-        No hay datos disponibles.
-      </p>
-    `;
-
-    return;
-  }
-
-  container.innerHTML =
-    programs
-      .map(
-        (item) => `
-          <div class="program-progress-row">
-
+  $("program-summary")
+    .innerHTML =
+      programs
+        .map(
+          (item) => `
             <div
-              class="program-progress-name"
-              title="${escapeHtml(
-                item.program
-              )}"
+              class="program-progress-row"
             >
-              ${escapeHtml(
-                item.program
-              )}
-            </div>
-
-            <div class="program-progress-center">
-
-              <div class="program-progress-track">
-                <div
-                  class="program-progress-fill"
-                  style="
-                    width:
-                    ${Math.min(
-                      item.percentage,
-                      100
-                    )}%
-                  "
-                ></div>
+              <div
+                class="program-progress-name"
+                title="${escapeHtml(
+                  item.program
+                )}"
+              >
+                ${escapeHtml(
+                  item.program
+                )}
               </div>
 
-              <div class="program-progress-detail">
-                <span>
+              <div
+                class="program-progress-center"
+              >
+                <div
+                  class="program-progress-track"
+                >
+                  <div
+                    class="program-progress-fill"
+                    style="
+                      width:${Math.min(
+                        item.percentage,
+                        100
+                      )}%
+                    "
+                  ></div>
+                </div>
+
+                <div
+                  class="program-progress-detail"
+                >
                   Meta:
                   <strong>
                     ${formatNumber(
                       item.meta
                     )}
                   </strong>
-                </span>
 
-                <span>·</span>
-
-                <span>
-                  Avance:
+                  · Avance:
                   <strong>
                     ${formatNumber(
                       item.advance
                     )}
                   </strong>
-                </span>
 
-                <span>·</span>
-
-                <span>
-                  Pendiente:
+                  · Pendiente:
                   <strong>
                     ${formatNumber(
                       item.pending
                     )}
                   </strong>
-                </span>
+                </div>
               </div>
 
+              <div
+                class="program-progress-percentage"
+              >
+                ${item.percentage.toFixed(
+                  1
+                )}%
+              </div>
             </div>
-
-            <div class="program-progress-percentage">
-              ${item.percentage.toFixed(
-                1
-              )}%
-            </div>
-
-          </div>
-        `
-      )
-      .join("");
+          `
+        )
+        .join("");
 }
-
-/* =========================================================
-   DESGLOSE POR ACTIVIDAD
-========================================================= */
 
 function ensureActivityBreakdownPanel() {
   if (
@@ -965,14 +906,12 @@ function ensureActivityBreakdownPanel() {
     return;
   }
 
-  const dashboardGrid =
+  const grid =
     document.querySelector(
       "#dashboard-page .dashboard-grid"
     );
 
-  if (
-    !dashboardGrid
-  ) {
+  if (!grid) {
     return;
   }
 
@@ -985,10 +924,14 @@ function ensureActivityBreakdownPanel() {
     "panel-card";
 
   panel.innerHTML = `
-    <div class="panel-header">
+    <div
+      class="panel-header"
+    >
       <div>
-        <span class="panel-kicker">
-          CUMPLIMIENTO
+        <span
+          class="panel-kicker"
+        >
+          Cumplimiento
         </span>
 
         <h3>
@@ -999,227 +942,164 @@ function ensureActivityBreakdownPanel() {
 
     <div
       id="activity-summary"
-      class="activity-progress-list"
     ></div>
   `;
 
-  dashboardGrid
-    .insertAdjacentElement(
-      "afterend",
-      panel
-    );
+  grid.insertAdjacentElement(
+    "afterend",
+    panel
+  );
 }
 
 function renderActivityBreakdown() {
-  const container =
-    $("activity-summary");
-
-  if (
-    !container
-  ) {
-    return;
-  }
-
   const rows =
-    buildProgressRows()
-      .sort(
-        (a, b) => {
-          const programCompare =
-            a.program.localeCompare(
-              b.program,
-              "es"
-            );
+    buildProgressRows();
 
-          if (
-            programCompare !== 0
-          ) {
-            return programCompare;
-          }
+  $("activity-summary")
+    .innerHTML = `
+      <div class="table-scroll">
+        <table
+          class="data-table"
+        >
+          <thead>
+            <tr>
+              <th>
+                Programa
+              </th>
 
-          return a.activity.localeCompare(
-            b.activity,
-            "es"
-          );
-        }
-      );
+              <th>
+                Actividad
+              </th>
 
-  if (
-    !rows.length
-  ) {
-    container.innerHTML = `
-      <p class="page-scope">
-        No hay actividades disponibles.
-      </p>
+              <th>
+                Meta
+              </th>
+
+              <th>
+                Avance
+              </th>
+
+              <th>
+                Pendiente
+              </th>
+
+              <th>
+                % avance
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${rows
+              .map(
+                (row) => `
+                  <tr>
+                    <td>
+                      <strong>
+                        ${escapeHtml(
+                          row.program
+                        )}
+                      </strong>
+                    </td>
+
+                    <td>
+                      ${escapeHtml(
+                        row.activity
+                      )}
+                    </td>
+
+                    <td>
+                      ${formatNumber(
+                        row.meta
+                      )}
+                    </td>
+
+                    <td>
+                      ${formatNumber(
+                        row.advance
+                      )}
+                    </td>
+
+                    <td>
+                      ${formatNumber(
+                        row.pending
+                      )}
+                    </td>
+
+                    <td>
+                      <strong>
+                        ${row.percentage.toFixed(
+                          1
+                        )}%
+                      </strong>
+                    </td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
     `;
-
-    return;
-  }
-
-  container.innerHTML = `
-    <div
-      style="
-        overflow:auto;
-        width:100%;
-      "
-    >
-      <table
-        style="
-          width:100%;
-          border-collapse:collapse;
-        "
-      >
-        <thead>
-          <tr>
-            <th
-              style="
-                text-align:left;
-                padding:12px;
-              "
-            >
-              Programa
-            </th>
-
-            <th
-              style="
-                text-align:left;
-                padding:12px;
-              "
-            >
-              Actividad
-            </th>
-
-            <th
-              style="
-                text-align:right;
-                padding:12px;
-              "
-            >
-              Meta
-            </th>
-
-            <th
-              style="
-                text-align:right;
-                padding:12px;
-              "
-            >
-              Avance
-            </th>
-
-            <th
-              style="
-                text-align:right;
-                padding:12px;
-              "
-            >
-              Pendiente
-            </th>
-
-            <th
-              style="
-                text-align:right;
-                padding:12px;
-              "
-            >
-              % avance
-            </th>
-          </tr>
-        </thead>
-
-        <tbody>
-          ${rows
-            .map(
-              (row) => `
-                <tr
-                  style="
-                    border-top:
-                    1px solid #dce3ed;
-                  "
-                >
-                  <td
-                    style="
-                      padding:12px;
-                      font-weight:800;
-                    "
-                  >
-                    ${escapeHtml(
-                      row.program
-                    )}
-                  </td>
-
-                  <td
-                    style="
-                      padding:12px;
-                    "
-                  >
-                    ${escapeHtml(
-                      row.activity
-                    )}
-                  </td>
-
-                  <td
-                    style="
-                      padding:12px;
-                      text-align:right;
-                    "
-                  >
-                    ${formatNumber(
-                      row.meta
-                    )}
-                  </td>
-
-                  <td
-                    style="
-                      padding:12px;
-                      text-align:right;
-                    "
-                  >
-                    ${formatNumber(
-                      row.advance
-                    )}
-                  </td>
-
-                  <td
-                    style="
-                      padding:12px;
-                      text-align:right;
-                    "
-                  >
-                    ${formatNumber(
-                      row.pending
-                    )}
-                  </td>
-
-                  <td
-                    style="
-                      padding:12px;
-                      text-align:right;
-                      font-weight:900;
-                    "
-                  >
-                    ${row.percentage.toFixed(
-                      1
-                    )}%
-                  </td>
-                </tr>
-              `
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
 }
 
-/* =========================================================
-   ESTADOS DE REVISIÓN
-========================================================= */
+function workflowLabel(row) {
+  if (
+    isHistorical(row)
+  ) {
+    return "Revisado";
+  }
+
+  const regional =
+    normalize(
+      row.estado_regional
+    );
+
+  const national =
+    normalize(
+      row.estado_nacional
+    );
+
+  if (
+    national.includes(
+      "VALIDAD"
+    )
+  ) {
+    return "Validado nacional";
+  }
+
+  if (
+    national.includes(
+      "OBSERV"
+    )
+  ) {
+    return "Observado nacional";
+  }
+
+  if (
+    regional.includes(
+      "DEVUEL"
+    )
+  ) {
+    return "Devuelto regional";
+  }
+
+  if (
+    regional.includes(
+      "REVISADO"
+    )
+  ) {
+    return "Pendiente nacional";
+  }
+
+  return "Pendiente regional";
+}
 
 function renderStatusSummary() {
   const grouped = {};
 
   for (
-    const row of getActivityRows()
+    const row of getRows()
   ) {
     const status =
       workflowLabel(row);
@@ -1231,31 +1111,13 @@ function renderStatusSummary() {
       ) + 1;
   }
 
-  const values =
-    Object.entries(grouped)
-      .map(
-        ([label, value]) => [
-          label,
-          value,
-          formatNumber(value)
-        ]
-      )
-      .sort(
-        (a, b) =>
-          b[1] - a[1]
-      );
-
-  renderBarList(
+  renderSimpleBars(
     "status-summary",
-    values
+    Object.entries(grouped)
   );
 }
 
-/* =========================================================
-   BARRAS
-========================================================= */
-
-function renderBarList(
+function renderSimpleBars(
   id,
   values
 ) {
@@ -1264,74 +1126,946 @@ function renderBarList(
       1,
       ...values.map(
         (item) =>
-          Number(item[1]) ||
-          0
+          item[1]
       )
     );
 
   $(id).innerHTML =
-    values.length
-      ? values
-          .map(
-            ([
-              label,
-              value,
-              displayValue
-            ]) => `
-              <div class="bar-row">
-                <span
-                  class="bar-label"
-                  title="${escapeHtml(
-                    label
-                  )}"
-                >
-                  ${escapeHtml(
-                    label
-                  )}
-                </span>
+    values
+      .map(
+        ([
+          label,
+          value
+        ]) => `
+          <div
+            class="bar-row"
+          >
+            <span
+              class="bar-label"
+            >
+              ${escapeHtml(
+                label
+              )}
+            </span>
 
-                <div class="bar-track">
-                  <div
-                    class="bar-fill"
-                    style="
-                      width:
-                      ${
-                        (
-                          Number(value) /
-                          max
-                        ) * 100
-                      }%
-                    "
-                  ></div>
-                </div>
+            <div
+              class="bar-track"
+            >
+              <div
+                class="bar-fill"
+                style="
+                  width:${
+                    (
+                      value /
+                      max
+                    ) * 100
+                  }%
+                "
+              ></div>
+            </div>
 
-                <strong
-                  title="${escapeHtml(
-                    displayValue ??
-                    value
-                  )}"
-                >
-                  ${escapeHtml(
-                    displayValue ??
-                    formatNumber(value)
-                  )}
-                </strong>
-              </div>
-            `
-          )
-          .join("")
-      : `
-          <p class="page-scope">
-            No hay datos disponibles.
-          </p>
-        `;
+            <strong>
+              ${value}
+            </strong>
+          </div>
+        `
+      )
+      .join("");
 }
 
 /* =========================================================
-   MAPA
+   REGISTRAR ACTIVIDAD
 ========================================================= */
 
-function renderMap() {
+function renderActivityForm(
+  editingRow = null
+) {
+  state.editingObjectId =
+    editingRow
+      ? getObjectId(
+          editingRow
+        )
+      : null;
+
+  $("coming-page")
+    .innerHTML = `
+      <article
+        class="panel-card"
+      >
+        <div
+          class="module-heading"
+        >
+          <div>
+            <span
+              class="panel-kicker"
+            >
+              Delegación
+            </span>
+
+            <h2>
+              ${
+                editingRow
+                  ? "Editar actividad"
+                  : "Registrar actividad"
+              }
+            </h2>
+          </div>
+        </div>
+
+        <form
+          id="activity-form"
+          class="module-form"
+        >
+          <div
+            class="form-grid"
+          >
+            <label>
+              Programa
+
+              <select
+                id="activity-program"
+                required
+              ></select>
+            </label>
+
+            <label>
+              Actividad
+
+              <select
+                id="activity-name"
+                required
+              ></select>
+            </label>
+          </div>
+
+          <div
+            id="activity-progress-card"
+            class="progress-info-card"
+          ></div>
+
+          <div
+            class="form-grid"
+          >
+            <label>
+              Fecha de actividad
+
+              <input
+                id="activity-date"
+                type="date"
+                required
+              >
+            </label>
+
+            <label>
+              Hora
+
+              <input
+                id="activity-time"
+                type="time"
+              >
+            </label>
+
+            <label>
+              Avance realizado
+
+              <input
+                id="activity-advance"
+                type="number"
+                min="1"
+                step="1"
+                required
+              >
+            </label>
+
+            <label>
+              Responsable
+
+              <input
+                id="activity-responsible"
+                type="text"
+                required
+              >
+            </label>
+          </div>
+
+          <div
+            class="form-section-title"
+          >
+            Participantes
+          </div>
+
+          <div
+            class="form-grid"
+          >
+            <label>
+              Hombres
+
+              <input
+                id="activity-men"
+                type="number"
+                min="0"
+                value="0"
+              >
+            </label>
+
+            <label>
+              Mujeres
+
+              <input
+                id="activity-women"
+                type="number"
+                min="0"
+                value="0"
+              >
+            </label>
+
+            <label>
+              Edad 10-18
+
+              <input
+                id="activity-age-10-18"
+                type="number"
+                min="0"
+                value="0"
+              >
+            </label>
+
+            <label>
+              Edad 19-30
+
+              <input
+                id="activity-age-19-30"
+                type="number"
+                min="0"
+                value="0"
+              >
+            </label>
+
+            <label>
+              Edad 31-45
+
+              <input
+                id="activity-age-31-45"
+                type="number"
+                min="0"
+                value="0"
+              >
+            </label>
+
+            <label>
+              Edad 46 o más
+
+              <input
+                id="activity-age-46"
+                type="number"
+                min="0"
+                value="0"
+              >
+            </label>
+          </div>
+
+          <div
+            class="form-section-title"
+          >
+            Ubicación
+          </div>
+
+          <div
+            class="form-grid"
+          >
+            <label>
+              Provincia
+
+              <select
+                id="activity-province"
+                required
+              ></select>
+            </label>
+
+            <label>
+              Cantón
+
+              <select
+                id="activity-canton"
+                required
+              ></select>
+            </label>
+
+            <label>
+              Distrito
+
+              <select
+                id="activity-district"
+                required
+              ></select>
+            </label>
+
+            <label>
+              Tipo de lugar
+
+              <input
+                id="activity-place-type"
+                type="text"
+              >
+            </label>
+
+            <label>
+              Lugar
+
+              <input
+                id="activity-place"
+                type="text"
+              >
+            </label>
+
+            <label>
+              Centro educativo
+
+              <input
+                id="activity-school"
+                type="text"
+              >
+            </label>
+          </div>
+
+          <div
+            class="map-toolbar"
+          >
+            <button
+              id="btn-use-gps"
+              type="button"
+              class="btn btn-secondary"
+            >
+              📍 Usar mi GPS
+            </button>
+
+            <button
+              type="button"
+              class="btn btn-map"
+              data-basemap="streets-navigation-vector"
+            >
+              Calles
+            </button>
+
+            <button
+              type="button"
+              class="btn btn-map"
+              data-basemap="satellite"
+            >
+              Satélite
+            </button>
+
+            <button
+              type="button"
+              class="btn btn-map"
+              data-basemap="topo-vector"
+            >
+              Topográfico
+            </button>
+          </div>
+
+          <div
+            id="activity-map"
+            class="form-map"
+          ></div>
+
+          <div
+            id="coordinates-info"
+            class="coordinates-info"
+          >
+            Marque un punto en el mapa o utilice GPS.
+          </div>
+
+          <div
+            class="form-grid"
+          >
+            <label>
+              Instituciones
+
+              <input
+                id="activity-institutions"
+                type="text"
+              >
+            </label>
+
+            <label>
+              Número de referencia
+
+              <input
+                id="activity-reference"
+                type="text"
+              >
+            </label>
+
+            <label>
+              Número de expediente
+
+              <input
+                id="activity-file"
+                type="text"
+              >
+            </label>
+          </div>
+
+          <label>
+            Observaciones
+
+            <textarea
+              id="activity-observations"
+              rows="4"
+            ></textarea>
+          </label>
+
+          <div
+            class="form-actions"
+          >
+            <button
+              type="submit"
+              class="btn btn-primary"
+            >
+              ${
+                editingRow
+                  ? "Guardar cambios"
+                  : "Enviar a revisión regional"
+              }
+            </button>
+          </div>
+        </form>
+      </article>
+    `;
+
+  setupActivityForm(
+    editingRow
+  );
+}
+
+function setupActivityForm(
+  editingRow
+) {
+  const programSelect =
+    $("activity-program");
+
+  const activitySelect =
+    $("activity-name");
+
+  const programs = [
+    ...new Set(
+      state.activityOptions.map(
+        (item) =>
+          item.programa
+      )
+    )
+  ];
+
+  fillSelect(
+    programSelect,
+    programs
+  );
+
+  function updateActivities() {
+    const program =
+      programSelect.value;
+
+    const options =
+      state.activityOptions.filter(
+        (item) =>
+          item.programa ===
+          program
+      );
+
+    fillSelect(
+      activitySelect,
+      options.map(
+        (item) =>
+          item.actividad
+      )
+    );
+
+    updateProgressCard();
+  }
+
+  function updateProgressCard() {
+    const option =
+      getSelectedActivityOption();
+
+    if (!option) {
+      $("activity-progress-card")
+        .innerHTML = "";
+
+      return;
+    }
+
+    $("activity-progress-card")
+      .innerHTML = `
+        <div>
+          <span>
+            Meta
+          </span>
+
+          <strong>
+            ${formatNumber(
+              option.meta
+            )}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Avance validado
+          </span>
+
+          <strong>
+            ${formatNumber(
+              option.avance_validado
+            )}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            En revisión
+          </span>
+
+          <strong>
+            ${formatNumber(
+              option.avance_en_revision
+            )}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Disponible
+          </span>
+
+          <strong>
+            ${formatNumber(
+              option.disponible_registro
+            )}
+          </strong>
+        </div>
+      `;
+
+    $("activity-advance")
+      .max =
+        option.disponible_registro;
+  }
+
+  programSelect
+    .addEventListener(
+      "change",
+      updateActivities
+    );
+
+  activitySelect
+    .addEventListener(
+      "change",
+      updateProgressCard
+    );
+
+  updateActivities();
+
+  setupLocationSelectors();
+
+  setupFormMap();
+
+  $("btn-use-gps")
+    .addEventListener(
+      "click",
+      useGps
+    );
+
+  document
+    .querySelectorAll(
+      "[data-basemap]"
+    )
+    .forEach(
+      (button) => {
+        button
+          .addEventListener(
+            "click",
+            () => {
+              if (
+                state.formMapView
+              ) {
+                state.formMapView
+                  .map
+                  .basemap =
+                    button.dataset.basemap;
+              }
+            }
+          );
+      }
+    );
+
+  if (editingRow) {
+    fillActivityForm(
+      editingRow
+    );
+  }
+
+  $("activity-form")
+    .addEventListener(
+      "submit",
+      submitActivity
+    );
+}
+
+function getSelectedActivityOption() {
+  return state.activityOptions.find(
+    (item) =>
+      item.programa ===
+        $("activity-program").value &&
+      item.actividad ===
+        $("activity-name").value
+  );
+}
+
+function fillActivityForm(row) {
+  $("activity-program").value =
+    row.programa || "";
+
+  $("activity-program")
+    .dispatchEvent(
+      new Event("change")
+    );
+
+  $("activity-name").value =
+    row.actividad || "";
+
+  $("activity-name")
+    .dispatchEvent(
+      new Event("change")
+    );
+
+  $("activity-date").value =
+    dateInputValue(
+      row.fecha_actividad
+    );
+
+  $("activity-time").value =
+    row.hora_actividad || "";
+
+  $("activity-advance").value =
+    row.avance_realizado || 0;
+
+  $("activity-responsible").value =
+    row.responsable || "";
+
+  $("activity-men").value =
+    row.cantidad_hombres || 0;
+
+  $("activity-women").value =
+    row.cantidad_mujeres || 0;
+
+  $("activity-age-10-18").value =
+    row.edad_10_18 || 0;
+
+  $("activity-age-19-30").value =
+    row.edad_19_30 || 0;
+
+  $("activity-age-31-45").value =
+    row.edad_31_45 || 0;
+
+  $("activity-age-46").value =
+    row.edad_46_mas || 0;
+
+  $("activity-place-type").value =
+    row.tipo_lugar || "";
+
+  $("activity-place").value =
+    row.lugar || "";
+
+  $("activity-school").value =
+    row.centro_educativo || "";
+
+  $("activity-institutions").value =
+    row.instituciones || "";
+
+  $("activity-reference").value =
+    row.numero_referencia || "";
+
+  $("activity-file").value =
+    row.numero_expediente || "";
+
+  $("activity-observations").value =
+    row.observaciones || "";
+
+  if (
+    row.latitud &&
+    row.longitud
+  ) {
+    setSelectedPoint(
+      Number(row.longitud),
+      Number(row.latitud)
+    );
+  }
+}
+
+async function submitActivity(
+  event
+) {
+  event.preventDefault();
+
+  try {
+    const men =
+      numberValue(
+        $("activity-men").value
+      );
+
+    const women =
+      numberValue(
+        $("activity-women").value
+      );
+
+    const attributes = {
+      programa:
+        $("activity-program").value,
+
+      actividad:
+        $("activity-name").value,
+
+      fecha_actividad:
+        new Date(
+          `${$("activity-date").value}T12:00:00`
+        ).getTime(),
+
+      hora_actividad:
+        $("activity-time").value,
+
+      avance_realizado:
+        numberValue(
+          $("activity-advance").value
+        ),
+
+      responsable:
+        $("activity-responsible").value,
+
+      cantidad_hombres:
+        men,
+
+      cantidad_mujeres:
+        women,
+
+      cantidad_participantes:
+        men + women,
+
+      edad_10_18:
+        numberValue(
+          $("activity-age-10-18").value
+        ),
+
+      edad_19_30:
+        numberValue(
+          $("activity-age-19-30").value
+        ),
+
+      edad_31_45:
+        numberValue(
+          $("activity-age-31-45").value
+        ),
+
+      edad_46_mas:
+        numberValue(
+          $("activity-age-46").value
+        ),
+
+      provincia:
+        $("activity-province").value,
+
+      canton:
+        $("activity-canton").value,
+
+      distrito:
+        $("activity-district").value,
+
+      tipo_lugar:
+        $("activity-place-type").value,
+
+      lugar:
+        $("activity-place").value,
+
+      centro_educativo:
+        $("activity-school").value,
+
+      instituciones:
+        $("activity-institutions").value,
+
+      numero_referencia:
+        $("activity-reference").value,
+
+      numero_expediente:
+        $("activity-file").value,
+
+      observaciones:
+        $("activity-observations").value,
+
+      latitud:
+        state.selectedPoint?.latitude || null,
+
+      longitud:
+        state.selectedPoint?.longitude || null
+    };
+
+    if (
+      state.editingObjectId
+    ) {
+      await api.updateActivity(
+        state.editingObjectId,
+        attributes
+      );
+
+      showToast(
+        "Actividad actualizada."
+      );
+    } else {
+      await api.createActivity(
+        attributes,
+
+        state.selectedPoint
+          ? {
+              x:
+                state.selectedPoint.longitude,
+
+              y:
+                state.selectedPoint.latitude,
+
+              spatialReference: {
+                wkid: 4326
+              }
+            }
+          : null
+      );
+
+      showToast(
+        "Actividad enviada a revisión regional."
+      );
+    }
+
+    state.editingObjectId =
+      null;
+
+    state.selectedPoint =
+      null;
+
+    await loadData();
+
+    renderMyRecords();
+  } catch (error) {
+    showToast(
+      error.message,
+      true
+    );
+  }
+}
+
+/* =========================================================
+   LOCALIDADES
+========================================================= */
+
+function setupLocationSelectors() {
+  const province =
+    $("activity-province");
+
+  const canton =
+    $("activity-canton");
+
+  const district =
+    $("activity-district");
+
+  const rows = [
+    ...state.delegaciones.map(
+      (feature) =>
+        feature.attributes || {}
+    ),
+
+    ...getRows()
+  ];
+
+  const provinces = [
+    ...new Set(
+      rows
+        .map(
+          (row) =>
+            row.provincia
+        )
+        .filter(Boolean)
+    )
+  ].sort();
+
+  fillSelect(
+    province,
+    provinces
+  );
+
+  function updateCantons() {
+    const values = [
+      ...new Set(
+        rows
+          .filter(
+            (row) =>
+              row.provincia ===
+              province.value
+          )
+          .map(
+            (row) =>
+              row.canton
+          )
+          .filter(Boolean)
+      )
+    ].sort();
+
+    fillSelect(
+      canton,
+      values
+    );
+
+    updateDistricts();
+  }
+
+  function updateDistricts() {
+    const values = [
+      ...new Set(
+        rows
+          .filter(
+            (row) =>
+              row.provincia ===
+                province.value &&
+              row.canton ===
+                canton.value
+          )
+          .map(
+            (row) =>
+              row.distrito
+          )
+          .filter(Boolean)
+      )
+    ].sort();
+
+    fillSelect(
+      district,
+      values
+    );
+  }
+
+  province.addEventListener(
+    "change",
+    updateCantons
+  );
+
+  canton.addEventListener(
+    "change",
+    updateDistricts
+  );
+
+  updateCantons();
+}
+
+/* =========================================================
+   MAPA FORMULARIO
+========================================================= */
+
+function setupFormMap() {
   require(
     [
       "esri/Map",
@@ -1339,103 +2073,28 @@ function renderMap() {
       "esri/Graphic",
       "esri/layers/GraphicsLayer"
     ],
+
     (
       Map,
       MapView,
       Graphic,
       GraphicsLayer
     ) => {
-      if (
-        state.mapView
-      ) {
-        state.mapView.destroy();
-
-        state.mapView = null;
-      }
-
       const map =
         new Map({
           basemap:
             "streets-navigation-vector"
         });
 
-      const layer =
+      const graphics =
         new GraphicsLayer();
 
-      map.add(layer);
-
-      state.actividades
-        .forEach(
-          (feature) => {
-            if (
-              !feature.geometry
-            ) {
-              return;
-            }
-
-            const attributes =
-              feature.attributes || {};
-
-            layer.add(
-              new Graphic({
-                geometry: {
-                  type: "point",
-
-                  longitude:
-                    feature.geometry.x,
-
-                  latitude:
-                    feature.geometry.y,
-
-                  spatialReference: {
-                    wkid: 4326
-                  }
-                },
-
-                symbol: {
-                  type:
-                    "simple-marker",
-
-                  color: [
-                    0,
-                    43,
-                    127
-                  ],
-
-                  size: 10,
-
-                  outline: {
-                    color: [
-                      255,
-                      255,
-                      255
-                    ],
-
-                    width: 1
-                  }
-                },
-
-                attributes,
-
-                popupTemplate: {
-                  title:
-                    "{delegacion}",
-
-                  content:
-                    "<b>Programa:</b> {programa}<br>" +
-                    "<b>Actividad:</b> {actividad}<br>" +
-                    "<b>Meta:</b> {meta}<br>" +
-                    "<b>Avance:</b> {avance}"
-                }
-              })
-            );
-          }
-        );
+      map.add(graphics);
 
       const view =
         new MapView({
           container:
-            "dashboard-map",
+            "activity-map",
 
           map,
 
@@ -1444,23 +2103,974 @@ function renderMap() {
             9.95
           ],
 
-          zoom: 7
+          zoom: 8
         });
 
-      state.mapView =
+      state.formMapView =
         view;
 
-      if (
-        layer.graphics.length
-      ) {
-        view
-          .goTo(
-            layer.graphics
-          )
-          .catch(() => {});
-      }
+      view.on(
+        "click",
+        (event) => {
+          setSelectedPoint(
+            event.mapPoint.longitude,
+            event.mapPoint.latitude,
+            graphics,
+            Graphic
+          );
+        }
+      );
+
+      state.formMapGraphics =
+        graphics;
+
+      state.formMapGraphicClass =
+        Graphic;
     }
   );
+}
+
+function setSelectedPoint(
+  longitude,
+  latitude,
+  graphics =
+    state.formMapGraphics,
+  Graphic =
+    state.formMapGraphicClass
+) {
+  state.selectedPoint = {
+    longitude,
+    latitude
+  };
+
+  if (
+    graphics &&
+    Graphic
+  ) {
+    graphics.removeAll();
+
+    graphics.add(
+      new Graphic({
+        geometry: {
+          type: "point",
+          longitude,
+          latitude
+        },
+
+        symbol: {
+          type: "simple-marker",
+          size: 13,
+          color: [
+            0,
+            43,
+            127
+          ],
+
+          outline: {
+            color: [
+              255,
+              255,
+              255
+            ],
+
+            width: 2
+          }
+        }
+      })
+    );
+  }
+
+  if (
+    $("coordinates-info")
+  ) {
+    $("coordinates-info")
+      .textContent =
+        `Latitud: ${latitude.toFixed(6)} · Longitud: ${longitude.toFixed(6)}`;
+  }
+}
+
+function useGps() {
+  if (
+    !navigator.geolocation
+  ) {
+    showToast(
+      "El dispositivo no permite GPS.",
+      true
+    );
+
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const longitude =
+        position.coords.longitude;
+
+      const latitude =
+        position.coords.latitude;
+
+      setSelectedPoint(
+        longitude,
+        latitude
+      );
+
+      state.formMapView
+        ?.goTo({
+          center: [
+            longitude,
+            latitude
+          ],
+
+          zoom: 16
+        });
+    },
+
+    (error) => {
+      showToast(
+        `No fue posible obtener GPS: ${error.message}`,
+        true
+      );
+    },
+
+    {
+      enableHighAccuracy: true,
+      timeout: 15000
+    }
+  );
+}
+
+/* =========================================================
+   MIS REGISTROS
+========================================================= */
+
+function renderMyRecords() {
+  const username =
+    normalize(
+      state.user?.username
+    );
+
+  const rows =
+    getRows()
+      .filter(
+        (row) =>
+          !isHistorical(row) &&
+          normalize(
+            row.usuario_registra
+          ) === username
+      );
+
+  $("coming-page")
+    .innerHTML = `
+      <article
+        class="panel-card"
+      >
+        <div
+          class="module-heading"
+        >
+          <div>
+            <span
+              class="panel-kicker"
+            >
+              Delegación
+            </span>
+
+            <h2>
+              Mis registros
+            </h2>
+          </div>
+        </div>
+
+        <div
+          class="table-scroll"
+        >
+          <table
+            class="data-table"
+          >
+            <thead>
+              <tr>
+                <th>
+                  Fecha
+                </th>
+
+                <th>
+                  Programa
+                </th>
+
+                <th>
+                  Actividad
+                </th>
+
+                <th>
+                  Avance
+                </th>
+
+                <th>
+                  Estado
+                </th>
+
+                <th>
+                  Acciones
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${rows
+                .map(
+                  (row) => `
+                    <tr>
+                      <td>
+                        ${formatDate(
+                          row.fecha_actividad
+                        )}
+                      </td>
+
+                      <td>
+                        ${escapeHtml(
+                          row.programa
+                        )}
+                      </td>
+
+                      <td>
+                        ${escapeHtml(
+                          row.actividad
+                        )}
+                      </td>
+
+                      <td>
+                        ${formatNumber(
+                          row.avance_realizado
+                        )}
+                      </td>
+
+                      <td>
+                        <span
+                          class="status-badge"
+                        >
+                          ${escapeHtml(
+                            workflowLabel(
+                              row
+                            )
+                          )}
+                        </span>
+                      </td>
+
+                      <td>
+                        <div
+                          class="table-actions"
+                        >
+                          <button
+                            class="btn btn-secondary btn-small"
+                            data-edit-record="${getObjectId(
+                              row
+                            )}"
+                          >
+                            Editar
+                          </button>
+
+                          <button
+                            class="btn btn-danger btn-small"
+                            data-delete-record="${getObjectId(
+                              row
+                            )}"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    `;
+
+  document
+    .querySelectorAll(
+      "[data-edit-record]"
+    )
+    .forEach(
+      (button) =>
+        button.addEventListener(
+          "click",
+          () => {
+            const objectId =
+              Number(
+                button.dataset.editRecord
+              );
+
+            const row =
+              rows.find(
+                (item) =>
+                  getObjectId(
+                    item
+                  ) ===
+                  objectId
+              );
+
+            renderActivityForm(
+              row
+            );
+          }
+        )
+    );
+
+  document
+    .querySelectorAll(
+      "[data-delete-record]"
+    )
+    .forEach(
+      (button) =>
+        button.addEventListener(
+          "click",
+          async () => {
+            const objectId =
+              Number(
+                button.dataset.deleteRecord
+              );
+
+            const confirmed =
+              window.confirm(
+                "¿Desea eliminar este registro?"
+              );
+
+            if (!confirmed) {
+              return;
+            }
+
+            try {
+              await api.deleteActivity(
+                objectId
+              );
+
+              await loadData();
+
+              renderMyRecords();
+
+              showToast(
+                "Registro eliminado."
+              );
+            } catch (error) {
+              showToast(
+                error.message,
+                true
+              );
+            }
+          }
+        )
+    );
+}
+
+/* =========================================================
+   MÓDULO REGIONAL
+========================================================= */
+
+function renderRegionalModule() {
+  const role =
+    normalize(
+      state.user?.role
+    );
+
+  if (
+    !role.includes("REGIONAL") &&
+    !role.includes("ADMIN")
+  ) {
+    renderComing(
+      "Revisión y validación"
+    );
+
+    return;
+  }
+
+  const rows =
+    getRows().filter(
+      (row) =>
+        !isHistorical(row)
+    );
+
+  const delegations = [
+    ...new Set(
+      rows
+        .map(
+          (row) =>
+            row.delegacion
+        )
+        .filter(Boolean)
+    )
+  ].sort();
+
+  const programs = [
+    ...new Set(
+      rows
+        .map(
+          (row) =>
+            row.programa
+        )
+        .filter(Boolean)
+    )
+  ].sort();
+
+  $("coming-page")
+    .innerHTML = `
+      <article
+        class="panel-card"
+      >
+        <div
+          class="module-heading"
+        >
+          <div>
+            <span
+              class="panel-kicker"
+            >
+              Dirección Regional
+            </span>
+
+            <h2>
+              Revisión de actividades
+            </h2>
+          </div>
+        </div>
+
+        <div
+          class="filter-grid"
+        >
+          <label>
+            Delegación
+
+            <select
+              id="regional-filter-delegation"
+            ></select>
+          </label>
+
+          <label>
+            Programa
+
+            <select
+              id="regional-filter-program"
+            ></select>
+          </label>
+
+          <label>
+            Estado
+
+            <select
+              id="regional-filter-status"
+            >
+              <option value="">
+                Todos
+              </option>
+
+              <option
+                value="Pendiente regional"
+              >
+                Pendiente regional
+              </option>
+
+              <option
+                value="Pendiente nacional"
+              >
+                Pendiente nacional
+              </option>
+
+              <option
+                value="Devuelto regional"
+              >
+                Devuelto regional
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div
+          id="regional-records"
+        ></div>
+      </article>
+    `;
+
+  fillSelect(
+    $("regional-filter-delegation"),
+    delegations,
+    true
+  );
+
+  fillSelect(
+    $("regional-filter-program"),
+    programs,
+    true
+  );
+
+  const render =
+    () =>
+      renderRegionalRecords(
+        rows
+      );
+
+  $("regional-filter-delegation")
+    .addEventListener(
+      "change",
+      render
+    );
+
+  $("regional-filter-program")
+    .addEventListener(
+      "change",
+      render
+    );
+
+  $("regional-filter-status")
+    .addEventListener(
+      "change",
+      render
+    );
+
+  render();
+}
+
+function renderRegionalRecords(
+  sourceRows
+) {
+  const delegation =
+    $("regional-filter-delegation")
+      .value;
+
+  const program =
+    $("regional-filter-program")
+      .value;
+
+  const status =
+    $("regional-filter-status")
+      .value;
+
+  const rows =
+    sourceRows.filter(
+      (row) => {
+        if (
+          delegation &&
+          row.delegacion !==
+            delegation
+        ) {
+          return false;
+        }
+
+        if (
+          program &&
+          row.programa !==
+            program
+        ) {
+          return false;
+        }
+
+        if (
+          status &&
+          workflowLabel(row) !==
+            status
+        ) {
+          return false;
+        }
+
+        return true;
+      }
+    );
+
+  $("regional-records")
+    .innerHTML =
+      rows.length
+        ? rows
+            .map(
+              (row) => `
+                <article
+                  class="review-card"
+                >
+                  <div
+                    class="review-card-header"
+                  >
+                    <div>
+                      <span
+                        class="status-badge"
+                      >
+                        ${escapeHtml(
+                          workflowLabel(
+                            row
+                          )
+                        )}
+                      </span>
+
+                      <h3>
+                        ${escapeHtml(
+                          row.delegacion
+                        )}
+                      </h3>
+
+                      <p>
+                        ${escapeHtml(
+                          row.programa
+                        )}
+                      </p>
+                    </div>
+
+                    <strong>
+                      Avance:
+                      ${formatNumber(
+                        row.avance_realizado
+                      )}
+                    </strong>
+                  </div>
+
+                  <div
+                    class="review-detail"
+                  >
+                    <strong>
+                      Actividad
+                    </strong>
+
+                    <p>
+                      ${escapeHtml(
+                        row.actividad
+                      )}
+                    </p>
+
+                    <strong>
+                      Fecha
+                    </strong>
+
+                    <p>
+                      ${formatDate(
+                        row.fecha_actividad
+                      )}
+                    </p>
+
+                    <strong>
+                      Responsable
+                    </strong>
+
+                    <p>
+                      ${escapeHtml(
+                        row.responsable
+                      )}
+                    </p>
+
+                    <strong>
+                      Ubicación
+                    </strong>
+
+                    <p>
+                      ${escapeHtml(
+                        [
+                          row.provincia,
+                          row.canton,
+                          row.distrito,
+                          row.lugar
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                      )}
+                    </p>
+
+                    <strong>
+                      Observaciones
+                    </strong>
+
+                    <p>
+                      ${escapeHtml(
+                        row.observaciones ||
+                        "Sin observaciones"
+                      )}
+                    </p>
+                  </div>
+
+                  <div
+                    class="review-actions"
+                  >
+                    <button
+                      class="btn btn-primary"
+                      data-regional-approve="${getObjectId(
+                        row
+                      )}"
+                    >
+                      ✅ Revisar y enviar
+                    </button>
+
+                    <button
+                      class="btn btn-warning"
+                      data-regional-return="${getObjectId(
+                        row
+                      )}"
+                    >
+                      ↩️ Devolver
+                    </button>
+
+                    <button
+                      class="btn btn-secondary"
+                      data-regional-edit="${getObjectId(
+                        row
+                      )}"
+                    >
+                      ✏️ Editar
+                    </button>
+
+                    <button
+                      class="btn btn-danger"
+                      data-regional-delete="${getObjectId(
+                        row
+                      )}"
+                    >
+                      🗑️ Eliminar
+                    </button>
+                  </div>
+                </article>
+              `
+            )
+            .join("")
+        : `
+            <div
+              class="module-empty"
+            >
+              No hay registros para los filtros seleccionados.
+            </div>
+          `;
+
+  bindRegionalActions(
+    sourceRows
+  );
+}
+
+function bindRegionalActions(
+  sourceRows
+) {
+  document
+    .querySelectorAll(
+      "[data-regional-approve]"
+    )
+    .forEach(
+      (button) =>
+        button.addEventListener(
+          "click",
+          async () => {
+            const observations =
+              window.prompt(
+                "Observaciones regionales:",
+                ""
+              ) || "";
+
+            await performRegionalReview(
+              Number(
+                button.dataset.regionalApprove
+              ),
+              "Revisado regional",
+              observations
+            );
+          }
+        )
+    );
+
+  document
+    .querySelectorAll(
+      "[data-regional-return]"
+    )
+    .forEach(
+      (button) =>
+        button.addEventListener(
+          "click",
+          async () => {
+            const observations =
+              window.prompt(
+                "Indique la observación para devolver el registro:"
+              );
+
+            if (
+              !observations
+            ) {
+              return;
+            }
+
+            await performRegionalReview(
+              Number(
+                button.dataset.regionalReturn
+              ),
+              "Devuelto regional",
+              observations
+            );
+          }
+        )
+    );
+
+  document
+    .querySelectorAll(
+      "[data-regional-edit]"
+    )
+    .forEach(
+      (button) =>
+        button.addEventListener(
+          "click",
+          () => {
+            const objectId =
+              Number(
+                button.dataset.regionalEdit
+              );
+
+            const row =
+              sourceRows.find(
+                (item) =>
+                  getObjectId(
+                    item
+                  ) ===
+                  objectId
+              );
+
+            regionalQuickEdit(
+              row
+            );
+          }
+        )
+    );
+
+  document
+    .querySelectorAll(
+      "[data-regional-delete]"
+    )
+    .forEach(
+      (button) =>
+        button.addEventListener(
+          "click",
+          async () => {
+            const objectId =
+              Number(
+                button.dataset.regionalDelete
+              );
+
+            if (
+              !window.confirm(
+                "¿Eliminar definitivamente este registro?"
+              )
+            ) {
+              return;
+            }
+
+            try {
+              await api.deleteActivity(
+                objectId
+              );
+
+              await loadData();
+
+              renderRegionalModule();
+
+              showToast(
+                "Registro eliminado."
+              );
+            } catch (error) {
+              showToast(
+                error.message,
+                true
+              );
+            }
+          }
+        )
+    );
+}
+
+async function performRegionalReview(
+  objectId,
+  status,
+  observations
+) {
+  try {
+    await api.regionalReview(
+      objectId,
+      status,
+      observations
+    );
+
+    await loadData();
+
+    renderRegionalModule();
+
+    showToast(
+      status ===
+        "Revisado regional"
+        ? "Actividad enviada a validación nacional."
+        : "Actividad devuelta a la delegación."
+    );
+  } catch (error) {
+    showToast(
+      error.message,
+      true
+    );
+  }
+}
+
+async function regionalQuickEdit(
+  row
+) {
+  const responsible =
+    window.prompt(
+      "Responsable:",
+      row.responsable || ""
+    );
+
+  if (
+    responsible === null
+  ) {
+    return;
+  }
+
+  const participants =
+    window.prompt(
+      "Cantidad de participantes:",
+      row.cantidad_participantes || 0
+    );
+
+  if (
+    participants === null
+  ) {
+    return;
+  }
+
+  const observations =
+    window.prompt(
+      "Observaciones:",
+      row.observaciones || ""
+    );
+
+  if (
+    observations === null
+  ) {
+    return;
+  }
+
+  try {
+    await api.updateActivity(
+      getObjectId(row),
+      {
+        responsable:
+          responsible,
+
+        cantidad_participantes:
+          numberValue(
+            participants
+          ),
+
+        observaciones:
+          observations
+      }
+    );
+
+    await loadData();
+
+    renderRegionalModule();
+
+    showToast(
+      "Registro actualizado."
+    );
+  } catch (error) {
+    showToast(
+      error.message,
+      true
+    );
+  }
 }
 
 /* =========================================================
@@ -1474,27 +3084,46 @@ function createDerivedNotifications() {
     );
 
   const rows =
-    getActivityRows();
+    getRows();
 
   const notes = [];
 
   if (
     role.includes("REGIONAL")
   ) {
-    const count =
-      rows.filter(
-        (row) =>
-          !isHistoricalReviewed(row) &&
-          workflowLabel(row) ===
-            "Pendiente de revisión regional"
-      ).length;
+    const grouped = {};
 
-    if (
-      count
+    rows
+      .filter(
+        (row) =>
+          !isHistorical(row) &&
+          workflowLabel(row) ===
+            "Pendiente regional"
+      )
+      .forEach(
+        (row) => {
+          const delegation =
+            row.delegacion ||
+            "Delegación";
+
+          grouped[delegation] =
+            (
+              grouped[delegation] ||
+              0
+            ) + 1;
+        }
+      );
+
+    for (
+      const [
+        delegation,
+        count
+      ]
+      of Object.entries(grouped)
     ) {
       notes.push({
         message:
-          `${count} actividad(es) pendiente(s) de revisión regional.`,
+          `${delegation} registró ${count} actividad(es) pendiente(s) de revisión.`,
 
         date:
           Date.now()
@@ -1503,27 +3132,41 @@ function createDerivedNotifications() {
   }
 
   if (
-    role.includes("COORDIN")
+    role.includes("DELEG")
   ) {
-    const count =
-      rows.filter(
+    rows
+      .filter(
         (row) =>
-          !isHistoricalReviewed(row) &&
-          workflowLabel(row) ===
-            "Pendiente de validación nacional"
-      ).length;
+          !isHistorical(row) &&
+          normalize(
+            row.usuario_registra
+          ) ===
+            normalize(
+              state.user?.username
+            ) &&
+          (
+            workflowLabel(row) ===
+              "Devuelto regional" ||
+            workflowLabel(row) ===
+              "Pendiente nacional" ||
+            workflowLabel(row) ===
+              "Validado nacional"
+          )
+      )
+      .slice(0, 10)
+      .forEach(
+        (row) => {
+          notes.push({
+            message:
+              `${row.actividad}: ${workflowLabel(row)}.`,
 
-    if (
-      count
-    ) {
-      notes.push({
-        message:
-          `${count} actividad(es) pendiente(s) de validación nacional.`,
-
-        date:
-          Date.now()
-      });
-    }
+            date:
+              row.fecha_revision_regional ||
+              row.fecha_revision_nacional ||
+              Date.now()
+          });
+        }
+      );
   }
 
   return notes;
@@ -1550,7 +3193,9 @@ function renderNotifications() {
         ? state.notificaciones
             .map(
               (item) => `
-                <article class="notification-item">
+                <article
+                  class="notification-item"
+                >
                   <strong>
                     ${escapeHtml(
                       item.message
@@ -1569,7 +3214,9 @@ function renderNotifications() {
             )
             .join("")
         : `
-            <p class="page-scope">
+            <p
+              class="page-scope"
+            >
               No hay notificaciones pendientes.
             </p>
           `;
@@ -1596,8 +3243,173 @@ function closeNotifications() {
 }
 
 /* =========================================================
+   MAPA DASHBOARD
+========================================================= */
+
+function renderMap() {
+  require(
+    [
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/Graphic",
+      "esri/layers/GraphicsLayer"
+    ],
+
+    (
+      Map,
+      MapView,
+      Graphic,
+      GraphicsLayer
+    ) => {
+      if (
+        state.mapView
+      ) {
+        state.mapView.destroy();
+      }
+
+      const map =
+        new Map({
+          basemap:
+            "streets-navigation-vector"
+        });
+
+      const layer =
+        new GraphicsLayer();
+
+      map.add(layer);
+
+      state.actividades.forEach(
+        (feature) => {
+          if (
+            !feature.geometry
+          ) {
+            return;
+          }
+
+          const attributes =
+            feature.attributes || {};
+
+          layer.add(
+            new Graphic({
+              geometry:
+                feature.geometry,
+
+              symbol: {
+                type:
+                  "simple-marker",
+
+                size:
+                  10,
+
+                color: [
+                  0,
+                  43,
+                  127
+                ],
+
+                outline: {
+                  color: [
+                    255,
+                    255,
+                    255
+                  ],
+
+                  width:
+                    1
+                }
+              },
+
+              attributes,
+
+              popupTemplate: {
+                title:
+                  "{delegacion}",
+
+                content:
+                  "<b>Programa:</b> {programa}<br>" +
+                  "<b>Actividad:</b> {actividad}<br>" +
+                  "<b>Avance realizado:</b> {avance_realizado}"
+              }
+            })
+          );
+        }
+      );
+
+      state.mapView =
+        new MapView({
+          container:
+            "dashboard-map",
+
+          map,
+
+          center: [
+            -84.1,
+            9.95
+          ],
+
+          zoom:
+            7
+        });
+    }
+  );
+}
+
+/* =========================================================
    UTILIDADES
 ========================================================= */
+
+function isNationalApproved(
+  row
+) {
+  const status =
+    normalize(
+      row.estado_nacional
+    );
+
+  return (
+    status.includes(
+      "VALIDAD"
+    ) ||
+    status.includes(
+      "APROB"
+    )
+  );
+}
+
+function fillSelect(
+  select,
+  values,
+  includeAll = false
+) {
+  select.innerHTML =
+    includeAll
+      ? `
+          <option value="">
+            Todos
+          </option>
+        `
+      : "";
+
+  for (
+    const value
+    of values
+  ) {
+    select.insertAdjacentHTML(
+      "beforeend",
+      `
+        <option
+          value="${escapeHtml(
+            value
+          )}"
+        >
+          ${escapeHtml(
+            value
+          )}
+        </option>
+      `
+    );
+  }
+}
 
 function normalize(value) {
   return String(
@@ -1612,15 +3424,76 @@ function normalize(value) {
     .toUpperCase();
 }
 
+function numberValue(value) {
+  const parsed =
+    Number(value);
+
+  return Number.isFinite(
+    parsed
+  )
+    ? parsed
+    : 0;
+}
+
+function sumBy(
+  rows,
+  field
+) {
+  return rows.reduce(
+    (
+      total,
+      row
+    ) =>
+      total +
+      numberValue(
+        row[field]
+      ),
+    0
+  );
+}
+
 function formatNumber(value) {
+  if (
+    typeof value ===
+    "string"
+  ) {
+    return value;
+  }
+
   return Number(
     value || 0
   ).toLocaleString(
     "es-CR",
     {
-      maximumFractionDigits: 2
+      maximumFractionDigits:
+        2
     }
   );
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(
+    value
+  ).toLocaleDateString(
+    "es-CR"
+  );
+}
+
+function dateInputValue(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date =
+    new Date(value);
+
+  return date
+    .toISOString()
+    .slice(0, 10);
 }
 
 function escapeHtml(value) {
@@ -1659,11 +3532,10 @@ function showToast(
     .remove("hidden");
 
   setTimeout(
-    () => {
+    () =>
       toast
         .classList
-        .add("hidden");
-    },
-    3600
+        .add("hidden"),
+    4000
   );
 }
