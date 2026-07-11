@@ -14,7 +14,14 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
-document.addEventListener("DOMContentLoaded", initialize);
+document.addEventListener(
+  "DOMContentLoaded",
+  initialize
+);
+
+/* =========================================================
+   INICIO
+========================================================= */
 
 async function initialize() {
   bindEvents();
@@ -26,6 +33,7 @@ async function initialize() {
       state.user = session.user;
 
       showMain();
+
       await loadData();
 
       return;
@@ -38,33 +46,76 @@ async function initialize() {
 }
 
 function bindEvents() {
-  $("login-form").addEventListener("submit", login);
-  $("btn-logout").addEventListener("click", logout);
-  $("btn-refresh").addEventListener("click", loadData);
-  $("btn-toggle-sidebar").addEventListener("click", toggleSidebar);
-  $("btn-open-notifications").addEventListener("click", openNotifications);
-  $("btn-close-notifications").addEventListener("click", closeNotifications);
-  $("drawer-backdrop").addEventListener("click", closeNotifications);
+  $("login-form").addEventListener(
+    "submit",
+    login
+  );
+
+  $("btn-logout").addEventListener(
+    "click",
+    logout
+  );
+
+  $("btn-refresh").addEventListener(
+    "click",
+    loadData
+  );
+
+  $("btn-toggle-sidebar").addEventListener(
+    "click",
+    toggleSidebar
+  );
+
+  $("btn-open-notifications").addEventListener(
+    "click",
+    openNotifications
+  );
+
+  $("btn-close-notifications").addEventListener(
+    "click",
+    closeNotifications
+  );
+
+  $("drawer-backdrop").addEventListener(
+    "click",
+    closeNotifications
+  );
 }
+
+/* =========================================================
+   LOGIN
+========================================================= */
 
 async function login(event) {
   event.preventDefault();
 
-  const username = $("login-username").value.trim();
-  const password = $("login-password").value;
+  const username =
+    $("login-username").value.trim();
 
-  const button = $("btn-login");
-  const original = button.textContent;
+  const password =
+    $("login-password").value;
+
+  const button =
+    $("btn-login");
+
+  const original =
+    button.textContent;
 
   button.disabled = true;
-  button.textContent = "Ingresando...";
+
+  button.textContent =
+    "Ingresando...";
 
   try {
-    const result = await api.login(username, password);
+    const result = await api.login(
+      username,
+      password
+    );
 
     api.setToken(result.token);
 
-    state.user = result.user;
+    state.user =
+      result.user;
 
     $("login-password").value = "";
 
@@ -72,21 +123,36 @@ async function login(event) {
 
     await loadData();
   } catch (error) {
-    showToast(error.message, true);
+    showToast(
+      error.message,
+      true
+    );
   } finally {
     button.disabled = false;
-    button.textContent = original;
+
+    button.textContent =
+      original;
   }
 }
 
 function showLogin() {
-  $("login-view").classList.remove("hidden");
-  $("main-view").classList.add("hidden");
+  $("login-view")
+    .classList
+    .remove("hidden");
+
+  $("main-view")
+    .classList
+    .add("hidden");
 }
 
 function showMain() {
-  $("login-view").classList.add("hidden");
-  $("main-view").classList.remove("hidden");
+  $("login-view")
+    .classList
+    .add("hidden");
+
+  $("main-view")
+    .classList
+    .remove("hidden");
 
   const name =
     state.user?.name ||
@@ -97,21 +163,28 @@ function showMain() {
     state.user?.role ||
     "Sin rol";
 
-  $("sidebar-user-name").textContent = name;
-  $("sidebar-user-role").textContent = role;
-  $("sidebar-avatar").textContent =
-    name.charAt(0).toUpperCase();
+  $("sidebar-user-name")
+    .textContent = name;
 
-  $("welcome-title").textContent =
-    `Bienvenido, ${name}`;
+  $("sidebar-user-role")
+    .textContent = role;
 
-  $("page-scope").textContent = [
-    state.user?.region,
-    state.user?.delegation,
-    state.user?.program
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  $("sidebar-avatar")
+    .textContent =
+      name.charAt(0).toUpperCase();
+
+  $("welcome-title")
+    .textContent =
+      `Bienvenido, ${name}`;
+
+  $("page-scope")
+    .textContent = [
+      state.user?.region,
+      state.user?.delegation,
+      state.user?.program
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
   buildNavigation();
 }
@@ -122,18 +195,25 @@ function logout() {
   window.location.reload();
 }
 
+/* =========================================================
+   MENÚ
+========================================================= */
+
 function toggleSidebar() {
   document
     .querySelector(".sidebar")
-    .classList.toggle("compact");
+    .classList
+    .toggle("compact");
 
   document
     .querySelector(".page-shell")
-    .classList.toggle("compact");
+    .classList
+    .toggle("compact");
 }
 
 function buildNavigation() {
-  const role = normalize(state.user?.role);
+  const role =
+    normalize(state.user?.role);
 
   const items = [
     {
@@ -182,7 +262,9 @@ function buildNavigation() {
     });
   }
 
-  if (role.includes("ADMIN")) {
+  if (
+    role.includes("ADMIN")
+  ) {
     items.push({
       id: "usuarios",
       label: "Usuarios",
@@ -190,64 +272,103 @@ function buildNavigation() {
     });
   }
 
-  $("sidebar-nav").innerHTML = items
-    .map(
-      (item, index) => `
-        <button
-          class="nav-item ${index === 0 ? "active" : ""}"
-          data-page="${item.id}"
-        >
-          <span class="nav-icon">${item.icon}</span>
-          <span class="nav-label">${item.label}</span>
-        </button>
-      `
-    )
-    .join("");
+  $("sidebar-nav")
+    .innerHTML = items
+      .map(
+        (item, index) => `
+          <button
+            class="nav-item ${
+              index === 0
+                ? "active"
+                : ""
+            }"
+            data-page="${item.id}"
+          >
+            <span class="nav-icon">
+              ${item.icon}
+            </span>
+
+            <span class="nav-label">
+              ${item.label}
+            </span>
+          </button>
+        `
+      )
+      .join("");
 
   document
     .querySelectorAll(".nav-item")
     .forEach((button) => {
-      button.addEventListener("click", () => {
-        document
-          .querySelectorAll(".nav-item")
-          .forEach((item) =>
-            item.classList.remove("active")
+      button.addEventListener(
+        "click",
+        () => {
+          document
+            .querySelectorAll(".nav-item")
+            .forEach((item) =>
+              item.classList.remove(
+                "active"
+              )
+            );
+
+          button
+            .classList
+            .add("active");
+
+          navigate(
+            button.dataset.page,
+            button.textContent.trim()
           );
-
-        button.classList.add("active");
-
-        navigate(
-          button.dataset.page,
-          button.textContent.trim()
-        );
-      });
+        }
+      );
     });
 }
 
-function navigate(pageId, title) {
+function navigate(
+  pageId,
+  title
+) {
   document
     .querySelectorAll(".page")
     .forEach((page) =>
-      page.classList.remove("active")
+      page
+        .classList
+        .remove("active")
     );
 
-  if (pageId === "dashboard") {
-    $("dashboard-page").classList.add("active");
+  if (
+    pageId === "dashboard"
+  ) {
+    $("dashboard-page")
+      .classList
+      .add("active");
 
-    $("page-title").textContent =
-      "Panel principal";
+    $("page-title")
+      .textContent =
+        "Panel principal";
 
     return;
   }
 
-  $("coming-page").classList.add("active");
+  $("coming-page")
+    .classList
+    .add("active");
 
-  $("page-title").textContent = title;
-  $("coming-title").textContent = title;
+  $("page-title")
+    .textContent =
+      title;
 
-  $("coming-description").textContent =
-    "El acceso ya está conectado al backend. Este módulo se incorporará en la siguiente entrega.";
+  $("coming-title")
+    .textContent =
+      title;
+
+  $("coming-description")
+    .textContent =
+      "El acceso ya está conectado al backend. Este módulo se incorporará en la siguiente entrega.";
 }
+
+/* =========================================================
+   CARGA DE DATOS
+========================================================= */
 
 async function loadData() {
   try {
@@ -284,7 +405,10 @@ async function loadData() {
       "Información real actualizada desde ArcGIS."
     );
   } catch (error) {
-    showToast(error.message, true);
+    showToast(
+      error.message,
+      true
+    );
   }
 }
 
@@ -292,26 +416,26 @@ function renderAll() {
   ensureActivityBreakdownPanel();
 
   renderKpis();
+
   renderProgramSummary();
+
   renderActivityBreakdown();
+
   renderStatusSummary();
+
   renderNotifications();
+
   renderMap();
 }
 
-/* =====================================================
-   DATOS
-===================================================== */
-
-function getSummaryRows() {
-  return state.resumen.map(
-    (feature) => feature.attributes || {}
-  );
-}
+/* =========================================================
+   FILAS DE ACTIVIDADES
+========================================================= */
 
 function getActivityRows() {
   return state.actividades.map(
-    (feature) => feature.attributes || {}
+    (feature) =>
+      feature.attributes || {}
   );
 }
 
@@ -320,8 +444,11 @@ function firstValue(
   fields,
   fallback = ""
 ) {
-  for (const field of fields) {
-    const value = row?.[field];
+  for (
+    const field of fields
+  ) {
+    const value =
+      row?.[field];
 
     if (
       value !== undefined &&
@@ -335,19 +462,28 @@ function firstValue(
   return fallback;
 }
 
-function numericValue(row, fields) {
-  const value = firstValue(
-    row,
-    fields,
-    0
-  );
+function numericValue(
+  row,
+  fields
+) {
+  const value =
+    firstValue(
+      row,
+      fields,
+      0
+    );
 
-  const parsed = Number(value);
+  const parsed =
+    Number(value);
 
   return Number.isFinite(parsed)
     ? parsed
     : 0;
 }
+
+/* =========================================================
+   CAMPOS REALES
+========================================================= */
 
 function getProgram(row) {
   return String(
@@ -369,9 +505,9 @@ function getActivity(row) {
       row,
       [
         "actividad",
-        "actividad_realizada",
         "Actividad",
-        "ACTIVIDAD"
+        "ACTIVIDAD",
+        "actividad_realizada"
       ],
       ""
     )
@@ -383,35 +519,20 @@ function getMeta(row) {
     row,
     [
       "meta",
-      "meta_2026",
-      "meta_oficial",
       "Meta",
       "META"
     ]
   );
 }
 
-function getBaseAdvance(row) {
+function getAdvance(row) {
   return numericValue(
     row,
     [
       "avance",
-      "avance_base",
-      "avance_acumulado",
       "Avance",
-      "AVANCE"
-    ]
-  );
-}
-
-function getActivityAdvance(row) {
-  return numericValue(
-    row,
-    [
-      "avance",
-      "avance_realizado",
-      "Avance Realizado",
-      "AVANCE"
+      "AVANCE",
+      "avance_realizado"
     ]
   );
 }
@@ -420,10 +541,10 @@ function getParticipants(row) {
   return numericValue(
     row,
     [
-      "cantidad_participantes",
       "participantes",
-      "Cantidad Participantes",
-      "PARTICIPANTES"
+      "Participantes",
+      "PARTICIPANTES",
+      "cantidad_participantes"
     ]
   );
 }
@@ -454,19 +575,26 @@ function getNationalStatus(row) {
   );
 }
 
-/* =====================================================
-   FLUJO HISTÓRICO Y NUEVO
-===================================================== */
+/* =========================================================
+   HISTÓRICOS
+========================================================= */
 
-function isHistoricalValidated(row) {
+function isHistoricalReviewed(row) {
+  const regional =
+    getRegionalStatus(row);
+
+  const national =
+    getNationalStatus(row);
+
   return (
-    !getRegionalStatus(row) &&
-    !getNationalStatus(row)
+    !regional &&
+    !national
   );
 }
 
 function isNationalApproved(row) {
-  const status = getNationalStatus(row);
+  const status =
+    getNationalStatus(row);
 
   return (
     status.includes("APROB") ||
@@ -474,117 +602,117 @@ function isNationalApproved(row) {
   );
 }
 
-function validatedNewActivities() {
-  return getActivityRows().filter(
-    (row) =>
-      !isHistoricalValidated(row) &&
-      isNationalApproved(row)
-  );
-}
-
-/* =====================================================
-   META - AVANCE - PENDIENTE - PORCENTAJE
-===================================================== */
+/* =========================================================
+   AGRUPACIÓN PROGRAMA + ACTIVIDAD
+========================================================= */
 
 function buildProgressRows() {
-  const grouped = new Map();
-
-  for (const row of getSummaryRows()) {
-    const program = getProgram(row);
-    const activity = getActivity(row);
-
-    if (!program || !activity) {
-      continue;
-    }
-
-    const key =
-      `${normalize(program)}|||${normalize(activity)}`;
-
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        program,
-        activity,
-        meta: 0,
-        baseAdvance: 0,
-        newApprovedAdvance: 0
-      });
-    }
-
-    const item = grouped.get(key);
-
-    item.meta += getMeta(row);
-
-    item.baseAdvance +=
-      getBaseAdvance(row);
-  }
+  const grouped =
+    new Map();
 
   for (
-    const row of validatedNewActivities()
+    const row of getActivityRows()
   ) {
-    const program = getProgram(row);
-    const activity = getActivity(row);
+    const program =
+      getProgram(row);
 
-    if (!program || !activity) {
+    const activity =
+      getActivity(row);
+
+    if (
+      !program ||
+      !activity
+    ) {
+      continue;
+    }
+
+    const normalizedProgram =
+      normalize(program);
+
+    const normalizedActivity =
+      normalize(activity);
+
+    if (
+      normalizedProgram === "PROGRAMA"
+    ) {
+      continue;
+    }
+
+    if (
+      normalizedActivity === "ACTIVIDAD"
+    ) {
       continue;
     }
 
     const key =
-      `${normalize(program)}|||${normalize(activity)}`;
+      `${normalizedProgram}|||${normalizedActivity}`;
 
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        program,
-        activity,
-        meta: 0,
-        baseAdvance: 0,
-        newApprovedAdvance: 0
-      });
+    if (
+      !grouped.has(key)
+    ) {
+      grouped.set(
+        key,
+        {
+          program,
+          activity,
+          meta: 0,
+          advance: 0,
+          records: 0
+        }
+      );
     }
 
-    grouped.get(key).newApprovedAdvance +=
-      getActivityAdvance(row);
+    const item =
+      grouped.get(key);
+
+    item.meta +=
+      getMeta(row);
+
+    item.advance +=
+      getAdvance(row);
+
+    item.records += 1;
   }
 
-  return [...grouped.values()].map(
-    (item) => {
-      const advance =
-        item.baseAdvance +
-        item.newApprovedAdvance;
+  return [
+    ...grouped.values()
+  ].map((item) => {
+    const pending =
+      Math.max(
+        item.meta -
+        item.advance,
+        0
+      );
 
-      const pending =
-        Math.max(
-          item.meta - advance,
-          0
-        );
+    const percentage =
+      item.meta > 0
+        ? (
+            item.advance /
+            item.meta
+          ) * 100
+        : 0;
 
-      const percentage =
-        item.meta > 0
-          ? (advance / item.meta) * 100
-          : 0;
-
-      return {
-        ...item,
-        advance,
-        pending,
-        percentage
-      };
-    }
-  );
+    return {
+      ...item,
+      pending,
+      percentage
+    };
+  });
 }
 
-/* =====================================================
-   KPIS
-===================================================== */
+/* =========================================================
+   INDICADORES
+========================================================= */
 
 function renderKpis() {
-  const activityRows =
+  const rows =
     getActivityRows();
 
   const progressRows =
     buildProgressRows();
 
   const records =
-    activityRows.length;
+    rows.length;
 
   const meta =
     progressRows.reduce(
@@ -608,13 +736,17 @@ function renderKpis() {
 
   const percentage =
     meta > 0
-      ? (advance / meta) * 100
+      ? (
+          advance /
+          meta
+        ) * 100
       : 0;
 
   const participants =
-    activityRows.reduce(
+    rows.reduce(
       (sum, row) =>
-        sum + getParticipants(row),
+        sum +
+        getParticipants(row),
       0
     );
 
@@ -645,27 +777,28 @@ function renderKpis() {
     ]
   ];
 
-  $("dashboard-kpis").innerHTML =
-    values
-      .map(
-        ([label, value]) => `
-          <article class="kpi-card">
-            <span>
-              ${escapeHtml(label)}
-            </span>
+  $("dashboard-kpis")
+    .innerHTML =
+      values
+        .map(
+          ([label, value]) => `
+            <article class="kpi-card">
+              <span>
+                ${escapeHtml(label)}
+              </span>
 
-            <strong>
-              ${escapeHtml(value)}
-            </strong>
-          </article>
-        `
-      )
-      .join("");
+              <strong>
+                ${escapeHtml(value)}
+              </strong>
+            </article>
+          `
+        )
+        .join("");
 }
 
-/* =====================================================
-   PROGRAMAS
-===================================================== */
+/* =========================================================
+   RESUMEN POR PROGRAMA
+========================================================= */
 
 function renderProgramSummary() {
   const grouped = {};
@@ -673,13 +806,17 @@ function renderProgramSummary() {
   for (
     const row of buildProgressRows()
   ) {
-    const program = row.program;
+    const program =
+      row.program;
 
-    if (!grouped[program]) {
+    if (
+      !grouped[program]
+    ) {
       grouped[program] = {
         meta: 0,
         advance: 0,
-        pending: 0
+        pending: 0,
+        records: 0
       };
     }
 
@@ -691,6 +828,9 @@ function renderProgramSummary() {
 
     grouped[program].pending +=
       row.pending;
+
+    grouped[program].records +=
+      row.records;
   }
 
   const values =
@@ -708,7 +848,13 @@ function renderProgramSummary() {
           return [
             program,
             data.advance,
-            `${formatNumber(data.advance)} / ${formatNumber(data.meta)} · ${percentage.toFixed(1)}%`
+            `${formatNumber(
+              data.advance
+            )} / ${formatNumber(
+              data.meta
+            )} · ${percentage.toFixed(
+              1
+            )}%`
           ];
         }
       )
@@ -723,12 +869,14 @@ function renderProgramSummary() {
   );
 }
 
-/* =====================================================
+/* =========================================================
    DESGLOSE POR ACTIVIDAD
-===================================================== */
+========================================================= */
 
 function ensureActivityBreakdownPanel() {
-  if ($("activity-summary")) {
+  if (
+    $("activity-summary")
+  ) {
     return;
   }
 
@@ -737,14 +885,19 @@ function ensureActivityBreakdownPanel() {
       "#dashboard-page .dashboard-grid"
     );
 
-  if (!dashboardGrid) {
+  if (
+    !dashboardGrid
+  ) {
     return;
   }
 
   const panel =
-    document.createElement("article");
+    document.createElement(
+      "article"
+    );
 
-  panel.className = "panel-card";
+  panel.className =
+    "panel-card";
 
   panel.innerHTML = `
     <div class="panel-header">
@@ -765,43 +918,52 @@ function ensureActivityBreakdownPanel() {
     ></div>
   `;
 
-  dashboardGrid.insertAdjacentElement(
-    "afterend",
-    panel
-  );
+  dashboardGrid
+    .insertAdjacentElement(
+      "afterend",
+      panel
+    );
 }
 
 function renderActivityBreakdown() {
   const container =
     $("activity-summary");
 
-  if (!container) {
+  if (
+    !container
+  ) {
     return;
   }
 
   const rows =
     buildProgressRows()
-      .sort((a, b) => {
-        const programCompare =
-          a.program.localeCompare(
-            b.program,
+      .sort(
+        (a, b) => {
+          const programCompare =
+            a.program.localeCompare(
+              b.program,
+              "es"
+            );
+
+          if (
+            programCompare !== 0
+          ) {
+            return programCompare;
+          }
+
+          return a.activity.localeCompare(
+            b.activity,
             "es"
           );
-
-        if (programCompare !== 0) {
-          return programCompare;
         }
+      );
 
-        return a.activity.localeCompare(
-          b.activity,
-          "es"
-        );
-      });
-
-  if (!rows.length) {
+  if (
+    !rows.length
+  ) {
     container.innerHTML = `
       <p class="page-scope">
-        No hay metas ni actividades disponibles.
+        No hay actividades disponibles.
       </p>
     `;
 
@@ -809,7 +971,12 @@ function renderActivityBreakdown() {
   }
 
   container.innerHTML = `
-    <div style="overflow:auto;">
+    <div
+      style="
+        overflow:auto;
+        width:100%;
+      "
+    >
       <table
         style="
           width:100%;
@@ -818,27 +985,57 @@ function renderActivityBreakdown() {
       >
         <thead>
           <tr>
-            <th style="text-align:left;padding:12px;">
+            <th
+              style="
+                text-align:left;
+                padding:12px;
+              "
+            >
               Programa
             </th>
 
-            <th style="text-align:left;padding:12px;">
+            <th
+              style="
+                text-align:left;
+                padding:12px;
+              "
+            >
               Actividad
             </th>
 
-            <th style="text-align:right;padding:12px;">
+            <th
+              style="
+                text-align:right;
+                padding:12px;
+              "
+            >
               Meta
             </th>
 
-            <th style="text-align:right;padding:12px;">
+            <th
+              style="
+                text-align:right;
+                padding:12px;
+              "
+            >
               Avance
             </th>
 
-            <th style="text-align:right;padding:12px;">
+            <th
+              style="
+                text-align:right;
+                padding:12px;
+              "
+            >
               Pendiente
             </th>
 
-            <th style="text-align:right;padding:12px;">
+            <th
+              style="
+                text-align:right;
+                padding:12px;
+              "
+            >
               % avance
             </th>
           </tr>
@@ -860,11 +1057,19 @@ function renderActivityBreakdown() {
                       font-weight:800;
                     "
                   >
-                    ${escapeHtml(row.program)}
+                    ${escapeHtml(
+                      row.program
+                    )}
                   </td>
 
-                  <td style="padding:12px;">
-                    ${escapeHtml(row.activity)}
+                  <td
+                    style="
+                      padding:12px;
+                    "
+                  >
+                    ${escapeHtml(
+                      row.activity
+                    )}
                   </td>
 
                   <td
@@ -873,7 +1078,9 @@ function renderActivityBreakdown() {
                       text-align:right;
                     "
                   >
-                    ${formatNumber(row.meta)}
+                    ${formatNumber(
+                      row.meta
+                    )}
                   </td>
 
                   <td
@@ -882,7 +1089,9 @@ function renderActivityBreakdown() {
                       text-align:right;
                     "
                   >
-                    ${formatNumber(row.advance)}
+                    ${formatNumber(
+                      row.advance
+                    )}
                   </td>
 
                   <td
@@ -891,7 +1100,9 @@ function renderActivityBreakdown() {
                       text-align:right;
                     "
                   >
-                    ${formatNumber(row.pending)}
+                    ${formatNumber(
+                      row.pending
+                    )}
                   </td>
 
                   <td
@@ -901,7 +1112,9 @@ function renderActivityBreakdown() {
                       font-weight:900;
                     "
                   >
-                    ${row.percentage.toFixed(1)}%
+                    ${row.percentage.toFixed(
+                      1
+                    )}%
                   </td>
                 </tr>
               `
@@ -913,40 +1126,42 @@ function renderActivityBreakdown() {
   `;
 }
 
-/* =====================================================
-   ESTADOS DE REVISIÓN
-===================================================== */
+/* =========================================================
+   ESTADO DE REVISIÓN
+========================================================= */
 
 function workflowLabel(row) {
-  if (isHistoricalValidated(row)) {
-    return "Histórico validado";
+  if (
+    isHistoricalReviewed(row)
+  ) {
+    return "Histórico revisado";
   }
-
-  const national =
-    getNationalStatus(row);
 
   const regional =
     getRegionalStatus(row);
+
+  const national =
+    getNationalStatus(row);
 
   if (
     national.includes("APROB") ||
     national.includes("VALIDAD")
   ) {
-    return "Aprobada";
+    return "Validado nacional";
   }
 
   if (
     national.includes("RECHAZ") ||
     national.includes("OBSERV")
   ) {
-    return "Observada nacional";
+    return "Observado nacional";
   }
 
   if (
     regional.includes("DEVUEL") ||
     regional.includes("OBSERV")
   ) {
-    return "Devuelta / observada regional";
+    return "Devuelto regional";
   }
 
   if (
@@ -962,7 +1177,7 @@ function workflowLabel(row) {
     return "Pendiente de revisión regional";
   }
 
-  return "En proceso";
+  return "En revisión";
 }
 
 function renderStatusSummary() {
@@ -975,7 +1190,10 @@ function renderStatusSummary() {
       workflowLabel(row);
 
     grouped[status] =
-      (grouped[status] || 0) + 1;
+      (
+        grouped[status] ||
+        0
+      ) + 1;
   }
 
   const values =
@@ -998,18 +1216,23 @@ function renderStatusSummary() {
   );
 }
 
-/* =====================================================
+/* =========================================================
    BARRAS
-===================================================== */
+========================================================= */
 
-function renderBarList(id, values) {
-  const max = Math.max(
-    1,
-    ...values.map(
-      (item) =>
-        Number(item[1]) || 0
-    )
-  );
+function renderBarList(
+  id,
+  values
+) {
+  const max =
+    Math.max(
+      1,
+      ...values.map(
+        (item) =>
+          Number(item[1]) ||
+          0
+      )
+    );
 
   $(id).innerHTML =
     values.length
@@ -1023,9 +1246,13 @@ function renderBarList(id, values) {
               <div class="bar-row">
                 <span
                   class="bar-label"
-                  title="${escapeHtml(label)}"
+                  title="${escapeHtml(
+                    label
+                  )}"
                 >
-                  ${escapeHtml(label)}
+                  ${escapeHtml(
+                    label
+                  )}
                 </span>
 
                 <div class="bar-track">
@@ -1033,14 +1260,20 @@ function renderBarList(id, values) {
                     class="bar-fill"
                     style="
                       width:
-                      ${(Number(value) / max) * 100}%
+                      ${
+                        (
+                          Number(value) /
+                          max
+                        ) * 100
+                      }%
                     "
                   ></div>
                 </div>
 
                 <strong
                   title="${escapeHtml(
-                    displayValue ?? value
+                    displayValue ??
+                    value
                   )}"
                 >
                   ${escapeHtml(
@@ -1059,9 +1292,9 @@ function renderBarList(id, values) {
         `;
 }
 
-/* =====================================================
+/* =========================================================
    MAPA
-===================================================== */
+========================================================= */
 
 function renderMap() {
   require(
@@ -1077,104 +1310,142 @@ function renderMap() {
       Graphic,
       GraphicsLayer
     ) => {
-      if (state.mapView) {
+      if (
+        state.mapView
+      ) {
         state.mapView.destroy();
+
         state.mapView = null;
       }
 
-      const map = new Map({
-        basemap:
-          "streets-navigation-vector"
-      });
+      const map =
+        new Map({
+          basemap:
+            "streets-navigation-vector"
+        });
 
       const layer =
         new GraphicsLayer();
 
       map.add(layer);
 
-      state.actividades.forEach(
-        (feature) => {
-          if (!feature.geometry) {
-            return;
-          }
+      state.actividades
+        .forEach(
+          (feature) => {
+            if (
+              !feature.geometry
+            ) {
+              return;
+            }
 
-          const attributes =
-            feature.attributes || {};
+            const attributes =
+              feature.attributes || {};
 
-          layer.add(
-            new Graphic({
-              geometry: {
-                type: "point",
-                longitude:
-                  feature.geometry.x,
-                latitude:
-                  feature.geometry.y,
-                spatialReference: {
-                  wkid: 4326
-                }
-              },
+            layer.add(
+              new Graphic({
+                geometry: {
+                  type: "point",
 
-              symbol: {
-                type: "simple-marker",
-                color: [0, 43, 127],
-                size: 10,
-                outline: {
+                  longitude:
+                    feature.geometry.x,
+
+                  latitude:
+                    feature.geometry.y,
+
+                  spatialReference: {
+                    wkid: 4326
+                  }
+                },
+
+                symbol: {
+                  type:
+                    "simple-marker",
+
                   color: [
-                    255,
-                    255,
-                    255
+                    0,
+                    43,
+                    127
                   ],
-                  width: 1
+
+                  size: 10,
+
+                  outline: {
+                    color: [
+                      255,
+                      255,
+                      255
+                    ],
+
+                    width: 1
+                  }
+                },
+
+                attributes,
+
+                popupTemplate: {
+                  title:
+                    "{delegacion}",
+
+                  content:
+                    "<b>Programa:</b> {programa}<br>" +
+                    "<b>Actividad:</b> {actividad}<br>" +
+                    "<b>Meta:</b> {meta}<br>" +
+                    "<b>Avance:</b> {avance}"
                 }
-              },
+              })
+            );
+          }
+        );
 
-              attributes,
+      const view =
+        new MapView({
+          container:
+            "dashboard-map",
 
-              popupTemplate: {
-                title: "{delegacion}",
+          map,
 
-                content:
-                  "<b>Programa:</b> {programa}<br>" +
-                  "<b>Actividad:</b> {actividad}<br>" +
-                  "<b>Estado:</b> {estado_validacion}"
-              }
-            })
-          );
-        }
-      );
+          center: [
+            -84.1,
+            9.95
+          ],
 
-      const view = new MapView({
-        container: "dashboard-map",
-        map,
-        center: [-84.1, 9.95],
-        zoom: 7
-      });
+          zoom: 7
+        });
 
-      state.mapView = view;
+      state.mapView =
+        view;
 
-      if (layer.graphics.length) {
+      if (
+        layer.graphics.length
+      ) {
         view
-          .goTo(layer.graphics)
+          .goTo(
+            layer.graphics
+          )
           .catch(() => {});
       }
     }
   );
 }
 
-/* =====================================================
+/* =========================================================
    NOTIFICACIONES
-===================================================== */
+========================================================= */
 
 function createDerivedNotifications() {
   const role =
-    normalize(state.user?.role);
+    normalize(
+      state.user?.role
+    );
 
   const rows =
     getActivityRows();
 
   const notes = [];
 
-  if (role.includes("REGIONAL")) {
+  if (
+    role.includes("REGIONAL")
+  ) {
     const count =
       rows.filter(
         (row) =>
@@ -1182,16 +1453,22 @@ function createDerivedNotifications() {
             .includes("PENDIENTE")
       ).length;
 
-    if (count) {
+    if (
+      count
+    ) {
       notes.push({
         message:
           `${count} actividad(es) pendiente(s) de revisión regional.`,
-        date: Date.now()
+
+        date:
+          Date.now()
       });
     }
   }
 
-  if (role.includes("COORDIN")) {
+  if (
+    role.includes("COORDIN")
+  ) {
     const count =
       rows.filter(
         (row) =>
@@ -1201,11 +1478,15 @@ function createDerivedNotifications() {
             .includes("PENDIENTE")
       ).length;
 
-    if (count) {
+    if (
+      count
+    ) {
       notes.push({
         message:
           `${count} actividad(es) pendiente(s) de validación nacional.`,
-        date: Date.now()
+
+        date:
+          Date.now()
       });
     }
   }
@@ -1217,63 +1498,76 @@ function renderNotifications() {
   const count =
     state.notificaciones.length;
 
-  $("notification-count").textContent =
-    count;
+  $("notification-count")
+    .textContent =
+      count;
 
   $("notification-count")
-    .classList.toggle(
+    .classList
+    .toggle(
       "hidden",
       count === 0
     );
 
-  $("notifications-list").innerHTML =
-    count
-      ? state.notificaciones
-          .map(
-            (item) => `
-              <article class="notification-item">
-                <strong>
-                  ${escapeHtml(item.message)}
-                </strong>
+  $("notifications-list")
+    .innerHTML =
+      count
+        ? state.notificaciones
+            .map(
+              (item) => `
+                <article class="notification-item">
+                  <strong>
+                    ${escapeHtml(
+                      item.message
+                    )}
+                  </strong>
 
-                <small>
-                  ${new Date(
-                    item.date
-                  ).toLocaleString("es-CR")}
-                </small>
-              </article>
-            `
-          )
-          .join("")
-      : `
-          <p class="page-scope">
-            No hay notificaciones pendientes.
-          </p>
-        `;
+                  <small>
+                    ${new Date(
+                      item.date
+                    ).toLocaleString(
+                      "es-CR"
+                    )}
+                  </small>
+                </article>
+              `
+            )
+            .join("")
+        : `
+            <p class="page-scope">
+              No hay notificaciones pendientes.
+            </p>
+          `;
 }
 
 function openNotifications() {
   $("notifications-drawer")
-    .classList.remove("hidden");
+    .classList
+    .remove("hidden");
 
   $("drawer-backdrop")
-    .classList.remove("hidden");
+    .classList
+    .remove("hidden");
 }
 
 function closeNotifications() {
   $("notifications-drawer")
-    .classList.add("hidden");
+    .classList
+    .add("hidden");
 
   $("drawer-backdrop")
-    .classList.add("hidden");
+    .classList
+    .add("hidden");
 }
 
-/* =====================================================
+/* =========================================================
    UTILIDADES
-===================================================== */
+========================================================= */
 
 function normalize(value) {
-  return String(value || "")
+  return String(
+    value || ""
+  )
     .trim()
     .normalize("NFD")
     .replace(
@@ -1314,18 +1608,27 @@ function showToast(
   message,
   error = false
 ) {
-  const toast = $("toast");
+  const toast =
+    $("toast");
 
-  toast.textContent = message;
+  toast.textContent =
+    message;
 
   toast.style.background =
     error
       ? "#b42318"
       : "#111827";
 
-  toast.classList.remove("hidden");
+  toast
+    .classList
+    .remove("hidden");
 
-  setTimeout(() => {
-    toast.classList.add("hidden");
-  }, 3600);
+  setTimeout(
+    () => {
+      toast
+        .classList
+        .add("hidden");
+    },
+    3600
+  );
 }
