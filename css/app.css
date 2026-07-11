@@ -735,3 +735,91 @@ button {
 .login-input-group span{font-size:.86rem}
 .login-input-group input{width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:12px;color:var(--text);background:var(--white)}
 .login-input-group input:focus{outline:3px solid rgba(18,74,158,.12);border-color:var(--blue-700)}
+
+/* =========================================================
+   RESUMEN POR PROGRAMA
+========================================================= */
+
+.program-progress-row {
+  display: grid;
+  grid-template-columns: 190px minmax(260px, 1fr) 85px;
+  gap: 18px;
+  align-items: center;
+  padding: 14px 0;
+}
+
+.program-progress-name {
+  color: #10233f;
+  font-weight: 900;
+  font-size: 1rem;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.program-progress-center {
+  min-width: 0;
+}
+
+.program-progress-track {
+  width: 100%;
+  height: 17px;
+
+  background: #e9eff6;
+
+  border-radius: 999px;
+
+  overflow: hidden;
+}
+
+.program-progress-fill {
+  height: 100%;
+
+  background:
+    linear-gradient(
+      90deg,
+      #124a9e,
+      #c79627
+    );
+
+  border-radius: 999px;
+}
+
+.program-progress-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+
+  margin-top: 7px;
+
+  color: #667085;
+
+  font-size: 0.78rem;
+}
+
+.program-progress-detail strong {
+  color: #10233f;
+}
+
+.program-progress-percentage {
+  color: #002b7f;
+
+  font-weight: 900;
+
+  font-size: 1.1rem;
+
+  text-align: right;
+
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .program-progress-row {
+    grid-template-columns: 1fr 75px;
+  }
+
+  .program-progress-name {
+    grid-column: 1 / -1;
+  }
+}
