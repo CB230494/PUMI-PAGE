@@ -14,10 +14,7 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
-document.addEventListener(
-  "DOMContentLoaded",
-  initialize
-);
+document.addEventListener("DOMContentLoaded", initialize);
 
 /* =========================================================
    INICIO
@@ -33,7 +30,6 @@ async function initialize() {
       state.user = session.user;
 
       showMain();
-
       await loadData();
 
       return;
@@ -46,36 +42,18 @@ async function initialize() {
 }
 
 function bindEvents() {
-  $("login-form").addEventListener(
-    "submit",
-    login
-  );
-
-  $("btn-logout").addEventListener(
-    "click",
-    logout
-  );
-
-  $("btn-refresh").addEventListener(
-    "click",
-    loadData
-  );
-
-  $("btn-toggle-sidebar").addEventListener(
-    "click",
-    toggleSidebar
-  );
-
+  $("login-form").addEventListener("submit", login);
+  $("btn-logout").addEventListener("click", logout);
+  $("btn-refresh").addEventListener("click", loadData);
+  $("btn-toggle-sidebar").addEventListener("click", toggleSidebar);
   $("btn-open-notifications").addEventListener(
     "click",
     openNotifications
   );
-
   $("btn-close-notifications").addEventListener(
     "click",
     closeNotifications
   );
-
   $("drawer-backdrop").addEventListener(
     "click",
     closeNotifications
@@ -89,22 +67,14 @@ function bindEvents() {
 async function login(event) {
   event.preventDefault();
 
-  const username =
-    $("login-username").value.trim();
+  const username = $("login-username").value.trim();
+  const password = $("login-password").value;
 
-  const password =
-    $("login-password").value;
-
-  const button =
-    $("btn-login");
-
-  const original =
-    button.textContent;
+  const button = $("btn-login");
+  const original = button.textContent;
 
   button.disabled = true;
-
-  button.textContent =
-    "Ingresando...";
+  button.textContent = "Ingresando...";
 
   try {
     const result = await api.login(
@@ -114,8 +84,7 @@ async function login(event) {
 
     api.setToken(result.token);
 
-    state.user =
-      result.user;
+    state.user = result.user;
 
     $("login-password").value = "";
 
@@ -129,30 +98,18 @@ async function login(event) {
     );
   } finally {
     button.disabled = false;
-
-    button.textContent =
-      original;
+    button.textContent = original;
   }
 }
 
 function showLogin() {
-  $("login-view")
-    .classList
-    .remove("hidden");
-
-  $("main-view")
-    .classList
-    .add("hidden");
+  $("login-view").classList.remove("hidden");
+  $("main-view").classList.add("hidden");
 }
 
 function showMain() {
-  $("login-view")
-    .classList
-    .add("hidden");
-
-  $("main-view")
-    .classList
-    .remove("hidden");
+  $("login-view").classList.add("hidden");
+  $("main-view").classList.remove("hidden");
 
   const name =
     state.user?.name ||
@@ -163,28 +120,21 @@ function showMain() {
     state.user?.role ||
     "Sin rol";
 
-  $("sidebar-user-name")
-    .textContent = name;
+  $("sidebar-user-name").textContent = name;
+  $("sidebar-user-role").textContent = role;
+  $("sidebar-avatar").textContent =
+    name.charAt(0).toUpperCase();
 
-  $("sidebar-user-role")
-    .textContent = role;
+  $("welcome-title").textContent =
+    `Bienvenido, ${name}`;
 
-  $("sidebar-avatar")
-    .textContent =
-      name.charAt(0).toUpperCase();
-
-  $("welcome-title")
-    .textContent =
-      `Bienvenido, ${name}`;
-
-  $("page-scope")
-    .textContent = [
-      state.user?.region,
-      state.user?.delegation,
-      state.user?.program
-    ]
-      .filter(Boolean)
-      .join(" · ");
+  $("page-scope").textContent = [
+    state.user?.region,
+    state.user?.delegation,
+    state.user?.program
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   buildNavigation();
 }
@@ -272,29 +222,28 @@ function buildNavigation() {
     });
   }
 
-  $("sidebar-nav")
-    .innerHTML = items
-      .map(
-        (item, index) => `
-          <button
-            class="nav-item ${
-              index === 0
-                ? "active"
-                : ""
-            }"
-            data-page="${item.id}"
-          >
-            <span class="nav-icon">
-              ${item.icon}
-            </span>
+  $("sidebar-nav").innerHTML = items
+    .map(
+      (item, index) => `
+        <button
+          class="nav-item ${
+            index === 0
+              ? "active"
+              : ""
+          }"
+          data-page="${item.id}"
+        >
+          <span class="nav-icon">
+            ${item.icon}
+          </span>
 
-            <span class="nav-label">
-              ${item.label}
-            </span>
-          </button>
-        `
-      )
-      .join("");
+          <span class="nav-label">
+            ${item.label}
+          </span>
+        </button>
+      `
+    )
+    .join("");
 
   document
     .querySelectorAll(".nav-item")
@@ -416,15 +365,10 @@ function renderAll() {
   ensureActivityBreakdownPanel();
 
   renderKpis();
-
   renderProgramSummary();
-
   renderActivityBreakdown();
-
   renderStatusSummary();
-
   renderNotifications();
-
   renderMap();
 }
 
@@ -575,31 +519,91 @@ function getNationalStatus(row) {
   );
 }
 
+function getSourceFile(row) {
+  return String(
+    firstValue(
+      row,
+      [
+        "archivo_origen",
+        "Archivo origen",
+        "ARCHIVO_ORIGEN"
+      ],
+      ""
+    )
+  ).trim();
+}
+
 /* =========================================================
-   HISTÓRICOS
+   HISTÓRICOS Y FLUJO NUEVO
 ========================================================= */
 
 function isHistoricalReviewed(row) {
+  return getSourceFile(row) !== "";
+}
+
+function workflowLabel(row) {
+  /*
+   * Todos los registros migrados desde Excel
+   * ya fueron revisados.
+   */
+  if (
+    isHistoricalReviewed(row)
+  ) {
+    return "Revisado";
+  }
+
   const regional =
     getRegionalStatus(row);
 
   const national =
     getNationalStatus(row);
 
-  return (
-    !regional &&
-    !national
-  );
-}
+  /*
+   * Validado por Coordinación Nacional.
+   */
+  if (
+    national.includes("APROB") ||
+    national.includes("VALIDAD")
+  ) {
+    return "Validado nacional";
+  }
 
-function isNationalApproved(row) {
-  const status =
-    getNationalStatus(row);
+  /*
+   * Observación nacional.
+   */
+  if (
+    national.includes("RECHAZ") ||
+    national.includes("OBSERV")
+  ) {
+    return "Observado nacional";
+  }
 
-  return (
-    status.includes("APROB") ||
-    status.includes("VALIDAD")
-  );
+  /*
+   * Devuelto por la Dirección Regional.
+   */
+  if (
+    regional.includes("DEVUEL") ||
+    regional.includes("OBSERV")
+  ) {
+    return "Devuelto regional";
+  }
+
+  /*
+   * La Dirección Regional ya revisó.
+   * Falta Coordinación Nacional.
+   */
+  if (
+    regional.includes("VERIFIC") ||
+    regional.includes("REVISAD")
+  ) {
+    return "Pendiente de validación nacional";
+  }
+
+  /*
+   * Todo registro nuevo creado desde PUMI
+   * debe iniciar pendiente de revisión regional.
+   */
+  return "Pendiente de revisión regional";
 }
 
 /* =========================================================
@@ -815,8 +819,7 @@ function renderProgramSummary() {
       grouped[program] = {
         meta: 0,
         advance: 0,
-        pending: 0,
-        records: 0
+        pending: 0
       };
     }
 
@@ -828,12 +831,9 @@ function renderProgramSummary() {
 
     grouped[program].pending +=
       row.pending;
-
-    grouped[program].records +=
-      row.records;
   }
 
-  const values =
+  const programs =
     Object.entries(grouped)
       .map(
         ([program, data]) => {
@@ -845,28 +845,113 @@ function renderProgramSummary() {
                 ) * 100
               : 0;
 
-          return [
+          return {
             program,
-            data.advance,
-            `${formatNumber(
-              data.advance
-            )} / ${formatNumber(
-              data.meta
-            )} · ${percentage.toFixed(
-              1
-            )}%`
-          ];
+            meta: data.meta,
+            advance: data.advance,
+            pending: data.pending,
+            percentage
+          };
         }
       )
       .sort(
         (a, b) =>
-          b[1] - a[1]
+          b.percentage -
+          a.percentage
       );
 
-  renderBarList(
-    "program-summary",
-    values
-  );
+  const container =
+    $("program-summary");
+
+  if (
+    !programs.length
+  ) {
+    container.innerHTML = `
+      <p class="page-scope">
+        No hay datos disponibles.
+      </p>
+    `;
+
+    return;
+  }
+
+  container.innerHTML =
+    programs
+      .map(
+        (item) => `
+          <div class="program-progress-row">
+
+            <div
+              class="program-progress-name"
+              title="${escapeHtml(
+                item.program
+              )}"
+            >
+              ${escapeHtml(
+                item.program
+              )}
+            </div>
+
+            <div class="program-progress-center">
+
+              <div class="program-progress-track">
+                <div
+                  class="program-progress-fill"
+                  style="
+                    width:
+                    ${Math.min(
+                      item.percentage,
+                      100
+                    )}%
+                  "
+                ></div>
+              </div>
+
+              <div class="program-progress-detail">
+                <span>
+                  Meta:
+                  <strong>
+                    ${formatNumber(
+                      item.meta
+                    )}
+                  </strong>
+                </span>
+
+                <span>·</span>
+
+                <span>
+                  Avance:
+                  <strong>
+                    ${formatNumber(
+                      item.advance
+                    )}
+                  </strong>
+                </span>
+
+                <span>·</span>
+
+                <span>
+                  Pendiente:
+                  <strong>
+                    ${formatNumber(
+                      item.pending
+                    )}
+                  </strong>
+                </span>
+              </div>
+
+            </div>
+
+            <div class="program-progress-percentage">
+              ${item.percentage.toFixed(
+                1
+              )}%
+            </div>
+
+          </div>
+        `
+      )
+      .join("");
 }
 
 /* =========================================================
@@ -1127,58 +1212,8 @@ function renderActivityBreakdown() {
 }
 
 /* =========================================================
-   ESTADO DE REVISIÓN
+   ESTADOS DE REVISIÓN
 ========================================================= */
-
-function workflowLabel(row) {
-  if (
-    isHistoricalReviewed(row)
-  ) {
-    return "Histórico revisado";
-  }
-
-  const regional =
-    getRegionalStatus(row);
-
-  const national =
-    getNationalStatus(row);
-
-  if (
-    national.includes("APROB") ||
-    national.includes("VALIDAD")
-  ) {
-    return "Validado nacional";
-  }
-
-  if (
-    national.includes("RECHAZ") ||
-    national.includes("OBSERV")
-  ) {
-    return "Observado nacional";
-  }
-
-  if (
-    regional.includes("DEVUEL") ||
-    regional.includes("OBSERV")
-  ) {
-    return "Devuelto regional";
-  }
-
-  if (
-    regional.includes("VERIFIC") &&
-    national.includes("PENDIENTE")
-  ) {
-    return "Pendiente de validación nacional";
-  }
-
-  if (
-    regional.includes("PENDIENTE")
-  ) {
-    return "Pendiente de revisión regional";
-  }
-
-  return "En revisión";
-}
 
 function renderStatusSummary() {
   const grouped = {};
@@ -1449,8 +1484,9 @@ function createDerivedNotifications() {
     const count =
       rows.filter(
         (row) =>
-          getRegionalStatus(row)
-            .includes("PENDIENTE")
+          !isHistoricalReviewed(row) &&
+          workflowLabel(row) ===
+            "Pendiente de revisión regional"
       ).length;
 
     if (
@@ -1472,10 +1508,9 @@ function createDerivedNotifications() {
     const count =
       rows.filter(
         (row) =>
-          getRegionalStatus(row)
-            .includes("VERIFIC") &&
-          getNationalStatus(row)
-            .includes("PENDIENTE")
+          !isHistoricalReviewed(row) &&
+          workflowLabel(row) ===
+            "Pendiente de validación nacional"
       ).length;
 
     if (
