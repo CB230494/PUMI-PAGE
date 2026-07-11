@@ -393,16 +393,14 @@ function getCatalogValues(type) {
         .filter(
           (row) =>
             normalize(row.tipo_catalogo) ===
-              normalizedType &&
-            isCatalogActive(row)
+            normalizedType
         )
-        .map(
-          (row) =>
-            String(
-              row.descripcion ||
-              row.codigo ||
-              ""
-            ).trim()
+        .map((row) =>
+          String(
+            row.descripcion ||
+            row.codigo ||
+            ""
+          ).trim()
         )
         .filter(Boolean)
     )
