@@ -1,42 +1,31 @@
-import { APP_CONFIG } from "../config/config.js";
-import {
-  ArcGISService,
-  launchOAuth,
-  readOAuthTokenFromHash
-} from "../services/arcgis-service.js";
+import { ApiService } from "../services/api-service.js";
 
-const service = new ArcGISService();
-
+const api = new ApiService();
 const state = {
-  demo: false,
-  portalUser: null,
   user: null,
   actividades: [],
   resumen: [],
+  catalogos: [],
+  delegaciones: [],
   notificaciones: [],
   mapView: null
 };
-
-const $ = (id) => document.getElementById(id);
+const $ = id => document.getElementById(id);
 
 document.addEventListener("DOMContentLoaded", initialize);
 
 async function initialize() {
   bindEvents();
 
-  const token = readOAuthTokenFromHash();
-
-  if (token) {
-    service.setToken(token);
-  }
-
-  if (service.token) {
+  if (api.token) {
     try {
-      await authenticateWithArcGIS();
+      const session = await api.me();
+      state.user = session.user;
+      showMain();
+      await loadData();
       return;
-    } catch (error) {
-      service.setToken("");
-      showToast(error.message, true);
+    } catch {
+      api.setToken("");
     }
   }
 
@@ -44,77 +33,39 @@ async function initialize() {
 }
 
 function bindEvents() {
-  $("btn-login-arcgis").addEventListener("click", () => {
-    if (APP_CONFIG.oauthClientId.includes("COLOQUE")) {
-      showToast(
-        "Primero debe colocar el Client ID en config/config.js.",
-        true
-      );
-      return;
-    }
-
-    launchOAuth();
-  });
-
-  $("btn-login-demo").addEventListener("click", openDemo);
+  $("login-form").addEventListener("submit", login);
   $("btn-logout").addEventListener("click", logout);
   $("btn-refresh").addEventListener("click", loadData);
-
   $("btn-toggle-sidebar").addEventListener("click", toggleSidebar);
-
-  $("btn-open-notifications").addEventListener(
-    "click",
-    openNotifications
-  );
-
-  $("btn-close-notifications").addEventListener(
-    "click",
-    closeNotifications
-  );
-
-  $("drawer-backdrop").addEventListener(
-    "click",
-    closeNotifications
-  );
+  $("btn-open-notifications").addEventListener("click", openNotifications);
+  $("btn-close-notifications").addEventListener("click", closeNotifications);
+  $("drawer-backdrop").addEventListener("click", closeNotifications);
 }
 
-async function authenticateWithArcGIS() {
-  state.portalUser = await service.getPortalUser();
-  state.user = await service.getPumiUser(
-    state.portalUser.username
-  );
+async function login(event) {
+  event.preventDefault();
 
-  if (!state.user) {
-    throw new Error(
-      "El usuario ArcGIS no se encuentra autorizado en PUMI_USUARIOS."
-    );
+  const username = $("login-username").value.trim();
+  const password = $("login-password").value;
+  const button = $("btn-login");
+  const original = button.textContent;
+
+  button.disabled = true;
+  button.textContent = "Ingresando...";
+
+  try {
+    const result = await api.login(username, password);
+    api.setToken(result.token);
+    state.user = result.user;
+    $("login-password").value = "";
+    showMain();
+    await loadData();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
   }
-
-  showMain();
-  await loadData();
-}
-
-function openDemo() {
-  state.demo = true;
-
-  state.portalUser = {
-    username: "nacional_demo",
-    fullName: "Usuario Nacional Demo"
-  };
-
-  state.user = {
-    usuario: "nacional_demo",
-    nombre: "Usuario Nacional Demo",
-    rol: "Administrador",
-    direccion_regional: "",
-    delegacion: "",
-    programa: "",
-    activo: 1
-  };
-
-  seedDemoData();
-  showMain();
-  renderAll();
 }
 
 function showLogin() {
@@ -126,35 +77,25 @@ function showMain() {
   $("login-view").classList.add("hidden");
   $("main-view").classList.remove("hidden");
 
-  const name =
-    state.user?.nombre ||
-    state.portalUser?.fullName ||
-    "Usuario";
-
-  const role = state.user?.rol || "Sin rol";
+  const name = state.user?.name || state.user?.username || "Usuario";
+  const role = state.user?.role || "Sin rol";
 
   $("sidebar-user-name").textContent = name;
   $("sidebar-user-role").textContent = role;
   $("sidebar-avatar").textContent = name.charAt(0).toUpperCase();
-
   $("welcome-title").textContent = `Bienvenido, ${name}`;
 
-  const scope = [
-    state.user?.direccion_regional,
-    state.user?.delegacion,
-    state.user?.programa
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  $("page-scope").textContent = scope;
+  $("page-scope").textContent = [
+    state.user?.region,
+    state.user?.delegation,
+    state.user?.program
+  ].filter(Boolean).join(" · ");
 
   buildNavigation();
 }
 
 function logout() {
-  service.setToken("");
-  sessionStorage.clear();
+  api.setToken("");
   window.location.reload();
 }
 
@@ -164,82 +105,37 @@ function toggleSidebar() {
 }
 
 function buildNavigation() {
-  const role = normalize(state.user?.rol);
+  const role = normalize(state.user?.role);
+  const items = [{ id:"dashboard", label:"Panel principal", icon:"📊" }];
 
-  const items = [
-    {
-      id: "dashboard",
-      label: "Panel principal",
-      icon: "📊"
-    }
-  ];
-
-  if (role.includes("deleg")) {
-    items.push({
-      id: "delegacion",
-      label: "Registrar actividad",
-      icon: "➕"
-    });
-
-    items.push({
-      id: "mis-registros",
-      label: "Mis registros",
-      icon: "📋"
-    });
+  if (role.includes("DELEG")) {
+    items.push(
+      { id:"delegacion", label:"Registrar actividad", icon:"➕" },
+      { id:"mis-registros", label:"Mis registros", icon:"📋" }
+    );
   }
 
-  if (
-    role.includes("regional") ||
-    role.includes("coordin") ||
-    role.includes("nacional") ||
-    role.includes("admin")
-  ) {
-    items.push({
-      id: "revision",
-      label: "Revisión y validación",
-      icon: "✅"
-    });
+  if (role.includes("REGIONAL") || role.includes("COORDIN") || role.includes("NACIONAL") || role.includes("ADMIN")) {
+    items.push({ id:"revision", label:"Revisión y validación", icon:"✅" });
   }
 
-  if (
-    role.includes("nacional") ||
-    role.includes("admin")
-  ) {
-    items.push({
-      id: "nacional",
-      label: "Vista nacional",
-      icon: "🗺️"
-    });
+  if (role.includes("NACIONAL") || role.includes("ADMIN")) {
+    items.push({ id:"nacional", label:"Vista nacional", icon:"🗺️" });
   }
 
-  if (role.includes("admin")) {
-    items.push({
-      id: "usuarios",
-      label: "Usuarios",
-      icon: "👥"
-    });
+  if (role.includes("ADMIN")) {
+    items.push({ id:"usuarios", label:"Usuarios", icon:"👥" });
   }
 
-  $("sidebar-nav").innerHTML = items
-    .map(
-      (item, index) => `
-        <button
-          class="nav-item ${index === 0 ? "active" : ""}"
-          data-page="${item.id}"
-        >
-          <span class="nav-icon">${item.icon}</span>
-          <span class="nav-label">${item.label}</span>
-        </button>
-      `
-    )
-    .join("");
+  $("sidebar-nav").innerHTML = items.map((item, i) => `
+    <button class="nav-item ${i===0 ? "active":""}" data-page="${item.id}">
+      <span class="nav-icon">${item.icon}</span>
+      <span class="nav-label">${item.label}</span>
+    </button>`).join("");
 
-  document.querySelectorAll(".nav-item").forEach((button) => {
+  document.querySelectorAll(".nav-item").forEach(button => {
     button.addEventListener("click", () => {
-      document
-        .querySelectorAll(".nav-item")
-        .forEach((item) => item.classList.remove("active"));
-
+      document.querySelectorAll(".nav-item").forEach(x => x.classList.remove("active"));
       button.classList.add("active");
       navigate(button.dataset.page, button.textContent.trim());
     });
@@ -247,9 +143,7 @@ function buildNavigation() {
 }
 
 function navigate(pageId, title) {
-  document
-    .querySelectorAll(".page")
-    .forEach((page) => page.classList.remove("active"));
+  document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
 
   if (pageId === "dashboard") {
     $("dashboard-page").classList.add("active");
@@ -261,28 +155,26 @@ function navigate(pageId, title) {
   $("page-title").textContent = title;
   $("coming-title").textContent = title;
   $("coming-description").textContent =
-    "Este módulo se conectará en la siguiente entrega sin alterar la estructura ya creada.";
+    "El acceso ya está conectado al backend. Este módulo se incorporará en la siguiente entrega.";
 }
 
 async function loadData() {
-  if (state.demo) {
-    renderAll();
-    showToast("Datos de demostración actualizados.");
-    return;
-  }
-
   try {
-    const [actividades, resumen] = await Promise.all([
-      service.queryLayer(APP_CONFIG.layers.actividades),
-      service.queryLayer(APP_CONFIG.layers.resumen)
+    const [activities, summary, catalogs, delegations] = await Promise.all([
+      api.getActivities(),
+      api.getSummary(),
+      api.getCatalogs(),
+      api.getDelegations()
     ]);
 
-    state.actividades = actividades;
-    state.resumen = resumen;
+    state.actividades = activities.features || [];
+    state.resumen = summary.features || [];
+    state.catalogos = catalogs.features || [];
+    state.delegaciones = delegations.features || [];
     state.notificaciones = createDerivedNotifications();
 
     renderAll();
-    showToast("Datos actualizados correctamente.");
+    showToast("Información real actualizada desde ArcGIS.");
   } catch (error) {
     showToast(error.message, true);
   }
@@ -296,292 +188,150 @@ function renderAll() {
   renderMap();
 }
 
-function scopedActivities() {
-  const role = normalize(state.user?.rol);
-  const region = normalize(state.user?.direccion_regional);
-  const delegation = normalize(state.user?.delegacion);
-  const program = normalize(state.user?.programa);
-
-  return state.actividades.filter((feature) => {
-    const row = feature.attributes || {};
-
-    if (role.includes("deleg")) {
-      return normalize(row.delegacion) === delegation;
-    }
-
-    if (role.includes("regional")) {
-      return normalize(row.direccion_regional) === region;
-    }
-
-    if (role.includes("coordin")) {
-      return normalize(row.programa).includes(program);
-    }
-
-    return true;
-  });
-}
-
 function renderKpis() {
-  const rows = scopedActivities().map(
-    (feature) => feature.attributes || {}
-  );
-
+  const rows = state.actividades.map(f => f.attributes || {});
   const total = rows.length;
+  const pending = rows.filter(r => normalize(r.estado_validacion || r.estado_verificacion_regional).includes("PENDIENTE")).length;
+  const approved = rows.filter(r => normalize(r.estado_validacion).includes("APROB")).length;
+  const participants = rows.reduce((s,r) => s + Number(r.cantidad_participantes ?? r.participantes ?? 0), 0);
+  const advance = rows.reduce((s,r) => s + Number(r.avance ?? r.avance_realizado ?? 0), 0);
 
-  const pending = rows.filter((row) =>
-    normalize(
-      row.estado_validacion ||
-      row.estado_verificacion_regional
-    ).includes("pendiente")
-  ).length;
-
-  const approved = rows.filter((row) =>
-    normalize(row.estado_validacion).includes("aprob")
-  ).length;
-
-  const participants = rows.reduce(
-    (sum, row) =>
-      sum + Number(row.cantidad_participantes || 0),
-    0
-  );
-
-  const advance = rows.reduce(
-    (sum, row) => sum + Number(row.avance || 0),
-    0
-  );
-
-  const data = [
+  $("dashboard-kpis").innerHTML = [
     ["Registros", total],
     ["Pendientes", pending],
     ["Aprobados", approved],
     ["Participantes", participants],
     ["Avance", advance]
-  ];
-
-  $("dashboard-kpis").innerHTML = data
-    .map(
-      ([label, value]) => `
-        <article class="kpi-card">
-          <span>${label}</span>
-          <strong>${Number(value).toLocaleString("es-CR")}</strong>
-        </article>
-      `
-    )
-    .join("");
+  ].map(([label,value]) => `
+    <article class="kpi-card">
+      <span>${label}</span>
+      <strong>${Number(value).toLocaleString("es-CR")}</strong>
+    </article>`).join("");
 }
 
 function renderProgramSummary() {
-  const rows = scopedActivities().map(
-    (feature) => feature.attributes || {}
-  );
-
-  const grouped = groupCount(rows, "programa");
-  renderBarList("program-summary", grouped);
+  const rows = state.actividades.map(f => f.attributes || {});
+  renderBarList("program-summary", groupCount(rows, "programa"));
 }
 
 function renderStatusSummary() {
-  const rows = scopedActivities().map(
-    (feature) => feature.attributes || {}
-  );
-
   const grouped = {};
 
-  rows.forEach((row) => {
-    const status =
-      row.estado_validacion ||
-      row.estado_verificacion_regional ||
-      "Sin estado";
-
+  state.actividades.forEach(feature => {
+    const row = feature.attributes || {};
+    const status = row.estado_validacion || row.estado_verificacion_regional || "Sin estado";
     grouped[status] = (grouped[status] || 0) + 1;
   });
 
-  renderBarList(
-    "status-summary",
-    Object.entries(grouped).sort((a, b) => b[1] - a[1])
-  );
+  renderBarList("status-summary", Object.entries(grouped).sort((a,b) => b[1]-a[1]));
 }
 
 function groupCount(rows, field) {
   const grouped = {};
-
-  rows.forEach((row) => {
+  rows.forEach(row => {
     const label = row[field] || "Sin dato";
     grouped[label] = (grouped[label] || 0) + 1;
   });
-
-  return Object.entries(grouped).sort((a, b) => b[1] - a[1]);
+  return Object.entries(grouped).sort((a,b) => b[1]-a[1]);
 }
 
-function renderBarList(containerId, values) {
-  const max = Math.max(
-    1,
-    ...values.map((item) => item[1])
-  );
-
-  $(containerId).innerHTML = values.length
-    ? values
-        .map(
-          ([label, value]) => `
-            <div class="bar-row">
-              <span class="bar-label" title="${escapeHtml(label)}">
-                ${escapeHtml(label)}
-              </span>
-
-              <div class="bar-track">
-                <div
-                  class="bar-fill"
-                  style="width:${(value / max) * 100}%"
-                ></div>
-              </div>
-
-              <strong>${value}</strong>
-            </div>
-          `
-        )
-        .join("")
+function renderBarList(id, values) {
+  const max = Math.max(1, ...values.map(x => x[1]));
+  $(id).innerHTML = values.length
+    ? values.map(([label,value]) => `
+      <div class="bar-row">
+        <span class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${(value/max)*100}%"></div></div>
+        <strong>${value}</strong>
+      </div>`).join("")
     : `<p class="page-scope">No hay datos disponibles.</p>`;
 }
 
 function renderMap() {
-  const features = scopedActivities();
-
   require(
-    [
-      "esri/Map",
-      "esri/views/MapView",
-      "esri/Graphic",
-      "esri/layers/GraphicsLayer"
-    ],
+    ["esri/Map","esri/views/MapView","esri/Graphic","esri/layers/GraphicsLayer"],
     (Map, MapView, Graphic, GraphicsLayer) => {
       if (state.mapView) {
         state.mapView.destroy();
         state.mapView = null;
       }
 
-      const map = new Map({
-        basemap: "streets-navigation-vector"
-      });
+      const map = new Map({ basemap:"streets-navigation-vector" });
+      const layer = new GraphicsLayer();
+      map.add(layer);
 
-      const graphicsLayer = new GraphicsLayer();
-      map.add(graphicsLayer);
-
-      features.forEach((feature) => {
-        if (!feature.geometry) {
-          return;
-        }
-
+      state.actividades.forEach(feature => {
+        if (!feature.geometry) return;
         const attributes = feature.attributes || {};
 
-        graphicsLayer.add(
-          new Graphic({
-            geometry: {
-              type: "point",
-              longitude: feature.geometry.x,
-              latitude: feature.geometry.y,
-              spatialReference: {
-                wkid: 4326
-              }
-            },
-            symbol: {
-              type: "simple-marker",
-              color: [0, 43, 127],
-              size: 10,
-              outline: {
-                color: [255, 255, 255],
-                width: 1
-              }
-            },
-            attributes,
-            popupTemplate: {
-              title: "{delegacion}",
-              content:
-                "<b>Programa:</b> {programa}<br>" +
-                "<b>Actividad:</b> {actividad}<br>" +
-                "<b>Estado:</b> {estado_validacion}"
-            }
-          })
-        );
+        layer.add(new Graphic({
+          geometry:{
+            type:"point",
+            longitude:feature.geometry.x,
+            latitude:feature.geometry.y,
+            spatialReference:{wkid:4326}
+          },
+          symbol:{
+            type:"simple-marker",
+            color:[0,43,127],
+            size:10,
+            outline:{color:[255,255,255],width:1}
+          },
+          attributes,
+          popupTemplate:{
+            title:"{delegacion}",
+            content:"<b>Programa:</b> {programa}<br><b>Actividad:</b> {actividad}<br><b>Estado:</b> {estado_validacion}"
+          }
+        }));
       });
 
       const view = new MapView({
-        container: "dashboard-map",
+        container:"dashboard-map",
         map,
-        center: [-84.1, 9.95],
-        zoom: 7
+        center:[-84.1,9.95],
+        zoom:7
       });
 
       state.mapView = view;
-
-      if (graphicsLayer.graphics.length > 0) {
-        view.goTo(graphicsLayer.graphics).catch(() => {});
-      }
+      if (layer.graphics.length) view.goTo(layer.graphics).catch(()=>{});
     }
   );
 }
 
 function createDerivedNotifications() {
-  const role = normalize(state.user?.rol);
-  const rows = scopedActivities().map(
-    (feature) => feature.attributes || {}
-  );
+  const role = normalize(state.user?.role);
+  const rows = state.actividades.map(f => f.attributes || {});
+  const notes = [];
 
-  const notifications = [];
-
-  if (role.includes("regional")) {
-    const count = rows.filter((row) =>
-      normalize(
-        row.estado_verificacion_regional ||
-        "Pendiente de verificación"
-      ).includes("pendiente")
+  if (role.includes("REGIONAL")) {
+    const count = rows.filter(r =>
+      normalize(r.estado_verificacion_regional || "Pendiente de verificación").includes("PENDIENTE")
     ).length;
-
-    if (count > 0) {
-      notifications.push({
-        message:
-          `${count} actividad(es) pendiente(s) de revisión regional.`,
-        date: Date.now()
-      });
-    }
+    if (count) notes.push({message:`${count} actividad(es) pendiente(s) de revisión regional.`, date:Date.now()});
   }
 
-  if (role.includes("coordin")) {
-    const count = rows.filter(
-      (row) =>
-        normalize(row.estado_verificacion_regional).includes(
-          "verificada"
-        ) &&
-        normalize(row.estado_validacion).includes("pendiente")
+  if (role.includes("COORDIN")) {
+    const count = rows.filter(r =>
+      normalize(r.estado_verificacion_regional).includes("VERIFICADA") &&
+      normalize(r.estado_validacion).includes("PENDIENTE")
     ).length;
-
-    if (count > 0) {
-      notifications.push({
-        message:
-          `${count} actividad(es) pendiente(s) de validación nacional.`,
-        date: Date.now()
-      });
-    }
+    if (count) notes.push({message:`${count} actividad(es) pendiente(s) de validación nacional.`, date:Date.now()});
   }
 
-  return notifications;
+  return notes;
 }
 
 function renderNotifications() {
   const count = state.notificaciones.length;
-
   $("notification-count").textContent = count;
   $("notification-count").classList.toggle("hidden", count === 0);
 
   $("notifications-list").innerHTML = count
-    ? state.notificaciones
-        .map(
-          (item) => `
-            <article class="notification-item">
-              <strong>${escapeHtml(item.message)}</strong>
-              <small>${new Date(item.date).toLocaleString("es-CR")}</small>
-            </article>
-          `
-        )
-        .join("")
+    ? state.notificaciones.map(item => `
+      <article class="notification-item">
+        <strong>${escapeHtml(item.message)}</strong>
+        <small>${new Date(item.date).toLocaleString("es-CR")}</small>
+      </article>`).join("")
     : `<p class="page-scope">No hay notificaciones pendientes.</p>`;
 }
 
@@ -595,107 +345,24 @@ function closeNotifications() {
   $("drawer-backdrop").classList.add("hidden");
 }
 
-function seedDemoData() {
-  state.actividades = [
-    {
-      attributes: {
-        OBJECTID: 1,
-        direccion_regional:
-          "Dirección Regional 1 - San José Central",
-        delegacion: "D01 Carmen",
-        programa: "DARE",
-        actividad: "Charla preventiva",
-        cantidad_participantes: 42,
-        avance: 1,
-        estado_verificacion_regional:
-          "Pendiente de verificación",
-        estado_validacion: "Pendiente"
-      },
-      geometry: {
-        x: -84.078,
-        y: 9.936
-      }
-    },
-    {
-      attributes: {
-        OBJECTID: 2,
-        direccion_regional:
-          "Dirección Regional 1 - San José Central",
-        delegacion: "D02 Merced",
-        programa: "GREAT",
-        actividad: "Sesión educativa",
-        cantidad_participantes: 31,
-        avance: 1,
-        estado_verificacion_regional:
-          "Verificada para envío",
-        estado_validacion: "Aprobada"
-      },
-      geometry: {
-        x: -84.084,
-        y: 9.943
-      }
-    },
-    {
-      attributes: {
-        OBJECTID: 3,
-        direccion_regional:
-          "Dirección Regional 2 - Alajuela",
-        delegacion: "Delegación Alajuela",
-        programa: "PSCC",
-        actividad: "Reunión comunitaria",
-        cantidad_participantes: 28,
-        avance: 1,
-        estado_verificacion_regional:
-          "Verificada para envío",
-        estado_validacion: "Pendiente"
-      },
-      geometry: {
-        x: -84.2116,
-        y: 10.0162
-      }
-    }
-  ];
-
-  state.resumen = [];
-
-  state.notificaciones = [
-    {
-      message:
-        "2 actividades pendientes de revisión o validación.",
-      date: Date.now()
-    }
-  ];
-}
-
 function normalize(value) {
   return String(value || "")
     .trim()
-    .toLowerCase();
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
 }
 
 function escapeHtml(value) {
-  return String(value || "").replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;"
-      })[character]
-  );
+  return String(value || "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  })[c]);
 }
 
-function showToast(message, error = false) {
+function showToast(message, error=false) {
   const toast = $("toast");
-
   toast.textContent = message;
   toast.style.background = error ? "#b42318" : "#111827";
   toast.classList.remove("hidden");
-
-  window.setTimeout(() => {
-    toast.classList.add("hidden");
-  }, 3400);
+  setTimeout(() => toast.classList.add("hidden"), 3600);
 }
-
