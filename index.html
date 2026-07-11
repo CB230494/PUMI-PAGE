@@ -37,25 +37,27 @@
           <div class="login-form-header">
             <span class="login-badge">PUMI 2026</span>
             <h2>Ingreso al sistema</h2>
-            <p>Acceda con su cuenta institucional de ArcGIS Online.</p>
+            <p>Acceda con el usuario y la contraseña asignados en PUMI.</p>
           </div>
 
-          <button id="btn-login-arcgis" class="btn btn-primary btn-block">
-            Ingresar con ArcGIS
-          </button>
+          <form id="login-form" class="login-fields">
+            <label class="login-input-group">
+              <span>Usuario PUMI</span>
+              <input id="login-username" type="text" autocomplete="username" placeholder="Digite su usuario" required>
+            </label>
 
-          <div class="login-separator">
-            <span></span>
-            <small>modo de prueba</small>
-            <span></span>
-          </div>
+            <label class="login-input-group">
+              <span>Contraseña</span>
+              <input id="login-password" type="password" autocomplete="current-password" placeholder="Digite su contraseña" required>
+            </label>
 
-          <button id="btn-login-demo" class="btn btn-secondary btn-block">
-            Abrir demostración
-          </button>
+            <button id="btn-login" class="btn btn-primary btn-block" type="submit">
+              Ingresar a PUMI
+            </button>
+          </form>
 
           <p class="login-security">
-            La aplicación no almacena contraseñas dentro de GitHub Pages.
+            El acceso se valida mediante PUMI_USUARIOS y la conexión privada con ArcGIS.
           </p>
         </div>
       </div>
