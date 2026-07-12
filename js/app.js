@@ -20,7 +20,8 @@ const state = {
   formMapGraphicClass: null,
   selectedPoint: null,
   editingObjectId: null,
-  currentReviewLevel: null
+  currentReviewLevel: null,
+  currentPage: "dashboard"
 };
 
 const $ = (id) => document.getElementById(id);
@@ -32,6 +33,7 @@ document.addEventListener("DOMContentLoaded", initialize);
 ========================================================= */
 
 async function initialize() {
+  injectVisualEnhancements();
   bindEvents();
 
   if (api.token) {
@@ -233,6 +235,8 @@ function buildNavigation() {
 ========================================================= */
 
 function navigate(pageId, title) {
+  state.currentPage = pageId;
+
   document.querySelectorAll(".page").forEach((page) => {
     page.classList.remove("active");
   });
@@ -326,7 +330,12 @@ async function loadData() {
 
     state.notificaciones = createDerivedNotifications();
 
-    renderDashboard();
+    if (state.currentPage === "dashboard") {
+      renderDashboard();
+    } else if (state.currentPage === "revision") {
+      renderReviewModule();
+    }
+
     renderNotifications();
 
     showToast("Información actualizada.");
@@ -418,7 +427,8 @@ function workflowLabel(row) {
 
   if (
     national.includes("OBSERV") ||
-    national.includes("RECHAZ")
+    national.includes("RECHAZ") ||
+    national.includes("DEVUEL")
   ) {
     return "Observado nacional";
   }
@@ -462,7 +472,6 @@ function renderDelegationDashboard() {
   renderActivityBreakdownFromLocal();
   renderStatusSummaryFromLocal();
   renderMap(state.actividades);
-
   renderDelegationOverview([]);
 }
 
@@ -502,13 +511,8 @@ function getBreakdownPanel() {
   panel.innerHTML = `
     <div class="panel-header">
       <div>
-        <span class="panel-kicker">
-          Cumplimiento
-        </span>
-
-        <h3>
-          Desglose por actividad
-        </h3>
+        <span class="panel-kicker">Cumplimiento</span>
+        <h3>Desglose por actividad</h3>
       </div>
     </div>
 
@@ -701,9 +705,7 @@ function renderProgramSummaryFromLocal() {
         b.porcentaje - a.porcentaje
     );
 
-  renderProgramSummaryFromDashboard(
-    programs
-  );
+  renderProgramSummaryFromDashboard(programs);
 }
 
 function renderProgramSummaryFromDashboard(programs) {
@@ -822,17 +824,9 @@ function renderActivityBreakdownTable(rows) {
                         ${escapeHtml(row.actividad)}
                       </td>
 
-                      <td>
-                        ${formatNumber(row.meta)}
-                      </td>
-
-                      <td>
-                        ${formatNumber(row.avance)}
-                      </td>
-
-                      <td>
-                        ${formatNumber(row.pendiente)}
-                      </td>
+                      <td>${formatNumber(row.meta)}</td>
+                      <td>${formatNumber(row.avance)}</td>
+                      <td>${formatNumber(row.pendiente)}</td>
 
                       <td>
                         <strong>
@@ -884,8 +878,7 @@ function renderSimpleBars(id, values) {
   const max = Math.max(
     1,
     ...values.map(
-      (item) =>
-        numberValue(item[1])
+      (item) => numberValue(item[1])
     )
   );
 
@@ -924,6 +917,10 @@ function renderSimpleBars(id, values) {
       `;
 }
 
+/* =========================================================
+   DELEGACIONES EN PANEL - DESPLEGABLE LIMPIO
+========================================================= */
+
 function renderDelegationOverview(delegations) {
   let panel = $("delegation-overview-panel");
 
@@ -950,78 +947,138 @@ function renderDelegationOverview(delegations) {
     );
   }
 
+  const title =
+    isNationalCoordinatorRole()
+      ? "Delegaciones del programa"
+      : "Delegaciones de la región";
+
   panel.innerHTML = `
     <div class="panel-header">
       <div>
-        <span class="panel-kicker">
-          Ámbito
-        </span>
-
-        <h3>
-          ${
-            isNationalCoordinatorRole()
-              ? "Delegaciones del programa"
-              : "Delegaciones de la región"
-          }
-        </h3>
+        <span class="panel-kicker">Ámbito</span>
+        <h3>${title}</h3>
       </div>
     </div>
 
-    <div class="delegation-summary-grid">
-      ${delegations
-        .map(
-          (item) => `
-            <button
-              type="button"
-              class="delegation-summary-card"
-              data-dashboard-delegation="${escapeHtml(
-                item.delegacion
-              )}"
-            >
-              <strong>
-                ${escapeHtml(item.delegacion)}
-              </strong>
+    <div class="pumi-delegation-selector">
+      <label for="dashboard-delegation-select">
+        Consultar una delegación
+      </label>
 
-              <span>
-                Registros:
-                ${formatNumber(item.registros)}
-              </span>
+      <div class="pumi-select-row">
+        <select id="dashboard-delegation-select">
+          <option value="">
+            Seleccione una delegación...
+          </option>
 
-              <span>
-                Pendiente regional:
-                ${formatNumber(item.pendientes_regional)}
-              </span>
+          ${delegations
+            .map(
+              (item) => `
+                <option value="${escapeHtml(item.delegacion)}">
+                  ${escapeHtml(item.delegacion)}
+                </option>
+              `
+            )
+            .join("")}
+        </select>
 
-              <span>
-                Pendiente nacional:
-                ${formatNumber(item.pendientes_nacional)}
-              </span>
+        <button
+          type="button"
+          id="btn-dashboard-delegation"
+          class="btn btn-primary"
+          disabled
+        >
+          Ver detalle
+        </button>
+      </div>
 
-              <span>
-                Validados:
-                ${formatNumber(item.validados)}
-              </span>
-            </button>
-          `
-        )
-        .join("")}
+      <div
+        id="dashboard-delegation-preview"
+        class="pumi-delegation-preview"
+      >
+        <div class="module-empty">
+          Seleccione una delegación para consultar sus indicadores.
+        </div>
+      </div>
     </div>
   `;
 
-  panel
-    .querySelectorAll(
-      "[data-dashboard-delegation]"
-    )
-    .forEach((button) => {
-      button.addEventListener(
-        "click",
-        async () => {
-          await loadDelegationBreakdown(
-            button.dataset.dashboardDelegation
-          );
-        }
+  const select =
+    $("dashboard-delegation-select");
+
+  const button =
+    $("btn-dashboard-delegation");
+
+  const preview =
+    $("dashboard-delegation-preview");
+
+  select?.addEventListener("change", () => {
+    const delegation =
+      select.value;
+
+    button.disabled =
+      !delegation;
+
+    if (!delegation) {
+      preview.innerHTML = `
+        <div class="module-empty">
+          Seleccione una delegación para consultar sus indicadores.
+        </div>
+      `;
+      return;
+    }
+
+    const item =
+      delegations.find(
+        (row) =>
+          row.delegacion === delegation
       );
-    });
+
+    preview.innerHTML = `
+      <div class="pumi-mini-kpi-grid">
+        <div class="pumi-mini-kpi">
+          <span>Registros</span>
+          <strong>
+            ${formatNumber(item?.registros)}
+          </strong>
+        </div>
+
+        <div class="pumi-mini-kpi">
+          <span>Pendiente regional</span>
+          <strong>
+            ${formatNumber(item?.pendientes_regional)}
+          </strong>
+        </div>
+
+        <div class="pumi-mini-kpi">
+          <span>Pendiente nacional</span>
+          <strong>
+            ${formatNumber(item?.pendientes_nacional)}
+          </strong>
+        </div>
+
+        <div class="pumi-mini-kpi">
+          <span>Validados</span>
+          <strong>
+            ${formatNumber(item?.validados)}
+          </strong>
+        </div>
+      </div>
+    `;
+  });
+
+  button?.addEventListener(
+    "click",
+    async () => {
+      if (!select.value) {
+        return;
+      }
+
+      await loadDelegationBreakdown(
+        select.value
+      );
+    }
+  );
 }
 
 async function loadDelegationBreakdown(delegation) {
@@ -1060,9 +1117,7 @@ function renderActivityForm(editingRow = null) {
     <article class="panel-card">
       <div class="module-heading">
         <div>
-          <span class="panel-kicker">
-            Delegación
-          </span>
+          <span class="panel-kicker">Delegación</span>
 
           <h2>
             ${
@@ -1521,31 +1576,22 @@ function getSelectedActivityOption() {
 }
 
 function setupLocationSelectors() {
-  const province =
-    $("activity-province");
-
-  const canton =
-    $("activity-canton");
-
-  const district =
-    $("activity-district");
-
   fillSelect(
-    province,
+    $("activity-province"),
     getCatalogValues("PROVINCIA"),
     false,
     "Seleccione una provincia"
   );
 
   fillSelect(
-    canton,
+    $("activity-canton"),
     getCatalogValues("CANTON"),
     false,
     "Seleccione un cantón"
   );
 
   fillSelect(
-    district,
+    $("activity-district"),
     getCatalogValues("DISTRITO"),
     false,
     "Seleccione un distrito"
@@ -1835,7 +1881,6 @@ async function submitActivity(event) {
     state.selectedPoint = null;
 
     await loadData();
-
     renderMyRecords();
   } catch (error) {
     showToast(error.message, true);
@@ -1959,15 +2004,11 @@ function setSelectedPoint(
         },
 
         symbol: {
-          type: "simple-marker",
-          style: "diamond",
-          size: 18,
-          color: [0, 43, 127],
-
-          outline: {
-            color: [255, 255, 255],
-            width: 2
-          }
+          type: "picture-marker",
+          url: createMarkerSvg("#0b3b8f"),
+          width: "36px",
+          height: "46px",
+          yoffset: "14px"
         }
       })
     );
@@ -2050,9 +2091,7 @@ function renderMyRecords() {
             Delegación
           </span>
 
-          <h2>
-            Mis registros
-          </h2>
+          <h2>Mis registros</h2>
         </div>
       </div>
 
@@ -2075,34 +2114,24 @@ function renderMyRecords() {
                 (row) => `
                   <tr>
                     <td>
-                      ${formatDate(
-                        row.fecha_actividad
-                      )}
+                      ${formatDate(row.fecha_actividad)}
                     </td>
 
                     <td>
-                      ${escapeHtml(
-                        row.programa
-                      )}
+                      ${escapeHtml(row.programa)}
                     </td>
 
                     <td>
-                      ${escapeHtml(
-                        row.actividad
-                      )}
+                      ${escapeHtml(row.actividad)}
                     </td>
 
                     <td>
-                      ${formatNumber(
-                        row.avance_realizado
-                      )}
+                      ${formatNumber(row.avance_realizado)}
                     </td>
 
                     <td>
                       <span class="status-badge">
-                        ${escapeHtml(
-                          workflowLabel(row)
-                        )}
+                        ${escapeHtml(workflowLabel(row))}
                       </span>
                     </td>
 
@@ -2267,19 +2296,9 @@ function renderActivityDataSections(row) {
       [
         ["Programa", row.programa],
         ["Actividad", row.actividad],
-        [
-          "Fecha",
-          formatDate(
-            row.fecha_actividad
-          )
-        ],
+        ["Fecha", formatDate(row.fecha_actividad)],
         ["Hora", row.hora_actividad],
-        [
-          "Avance realizado",
-          formatNumber(
-            row.avance_realizado
-          )
-        ],
+        ["Avance realizado", formatNumber(row.avance_realizado)],
         ["Responsable", row.responsable]
       ]
     )}
@@ -2287,48 +2306,13 @@ function renderActivityDataSections(row) {
     ${buildDetailSection(
       "Participantes",
       [
-        [
-          "Total",
-          formatNumber(
-            row.cantidad_participantes
-          )
-        ],
-        [
-          "Hombres",
-          formatNumber(
-            row.cantidad_hombres
-          )
-        ],
-        [
-          "Mujeres",
-          formatNumber(
-            row.cantidad_mujeres
-          )
-        ],
-        [
-          "Edad 10-18",
-          formatNumber(
-            row.edad_10_18
-          )
-        ],
-        [
-          "Edad 19-30",
-          formatNumber(
-            row.edad_19_30
-          )
-        ],
-        [
-          "Edad 31-45",
-          formatNumber(
-            row.edad_31_45
-          )
-        ],
-        [
-          "Edad 46 o más",
-          formatNumber(
-            row.edad_46_mas
-          )
-        ]
+        ["Total", formatNumber(row.cantidad_participantes)],
+        ["Hombres", formatNumber(row.cantidad_hombres)],
+        ["Mujeres", formatNumber(row.cantidad_mujeres)],
+        ["Edad 10-18", formatNumber(row.edad_10_18)],
+        ["Edad 19-30", formatNumber(row.edad_19_30)],
+        ["Edad 31-45", formatNumber(row.edad_31_45)],
+        ["Edad 46 o más", formatNumber(row.edad_46_mas)]
       ]
     )}
 
@@ -2340,10 +2324,7 @@ function renderActivityDataSections(row) {
         ["Distrito", row.distrito],
         ["Tipo de lugar", row.tipo_lugar],
         ["Lugar", row.lugar],
-        [
-          "Centro educativo",
-          row.centro_educativo
-        ]
+        ["Centro educativo", row.centro_educativo]
       ]
     )}
 
@@ -2351,14 +2332,8 @@ function renderActivityDataSections(row) {
       "Información complementaria",
       [
         ["Instituciones", row.instituciones],
-        [
-          "Número de referencia",
-          row.numero_referencia
-        ],
-        [
-          "Número de expediente",
-          row.numero_expediente
-        ],
+        ["Número de referencia", row.numero_referencia],
+        ["Número de expediente", row.numero_expediente],
         ["Observaciones", row.observaciones]
       ]
     )}
@@ -2368,20 +2343,9 @@ function renderActivityDataSections(row) {
         ? buildDetailSection(
             "Valoración Regional",
             [
-              [
-                "Coordinador Regional",
-                row.coordinador_regional
-              ],
-              [
-                "Fecha de revisión",
-                formatDateTime(
-                  row.fecha_revision_regional
-                )
-              ],
-              [
-                "Observación Regional",
-                row.observacion_regional
-              ]
+              ["Coordinador Regional", row.coordinador_regional],
+              ["Fecha de revisión", formatDateTime(row.fecha_revision_regional)],
+              ["Observación Regional", row.observacion_regional]
             ]
           )
         : ""
@@ -2392,20 +2356,9 @@ function renderActivityDataSections(row) {
         ? buildDetailSection(
             "Valoración Nacional",
             [
-              [
-                "Coordinador Nacional",
-                row.coordinador_nacional
-              ],
-              [
-                "Fecha de revisión",
-                formatDateTime(
-                  row.fecha_revision_nacional
-                )
-              ],
-              [
-                "Observación Nacional",
-                row.observacion_nacional
-              ]
+              ["Coordinador Nacional", row.coordinador_nacional],
+              ["Fecha de revisión", formatDateTime(row.fecha_revision_nacional)],
+              ["Observación Nacional", row.observacion_nacional]
             ]
           )
         : ""
@@ -2413,10 +2366,7 @@ function renderActivityDataSections(row) {
   `;
 }
 
-function buildDetailSection(
-  title,
-  fields
-) {
+function buildDetailSection(title, fields) {
   return `
     <section class="record-detail-section">
       <div class="form-section-title">
@@ -2428,9 +2378,7 @@ function buildDetailSection(
           .map(
             ([label, value]) => `
               <div class="record-detail-item">
-                <span>
-                  ${escapeHtml(label)}
-                </span>
+                <span>${escapeHtml(label)}</span>
 
                 <strong>
                   ${escapeHtml(
@@ -2553,9 +2501,7 @@ function renderReviewQueue(
             ${escapeHtml(kicker)}
           </span>
 
-          <h2>
-            ${escapeHtml(title)}
-          </h2>
+          <h2>${escapeHtml(title)}</h2>
 
           ${
             queue?.program
@@ -2580,36 +2526,26 @@ function renderReviewQueue(
         </div>
       </div>
 
-      <div class="filter-grid">
+      <div class="filter-grid pumi-review-filters">
         <label>
           Delegación
-          <select
-            id="review-filter-delegation"
-          ></select>
+          <select id="review-filter-delegation"></select>
         </label>
 
         <label>
           Programa
-          <select
-            id="review-filter-program"
-          ></select>
+          <select id="review-filter-program"></select>
         </label>
 
         <label>
           Actividad
-          <select
-            id="review-filter-activity"
-          ></select>
+          <select id="review-filter-activity"></select>
         </label>
 
         <label>
           Estado
-          <select
-            id="review-filter-status"
-          >
-            <option value="">
-              Todos
-            </option>
+          <select id="review-filter-status">
+            <option value="">Todos</option>
 
             ${[
               ...new Set(
@@ -2860,15 +2796,11 @@ async function openReviewDetail(objectId) {
               </span>
 
               <h2>
-                ${escapeHtml(
-                  row.delegacion
-                )}
+                ${escapeHtml(row.delegacion)}
               </h2>
 
               <p class="page-scope">
-                ${escapeHtml(
-                  row.direccion_regional
-                )}
+                ${escapeHtml(row.direccion_regional)}
               </p>
             </div>
 
@@ -2886,41 +2818,27 @@ async function openReviewDetail(objectId) {
           <div class="progress-info-card">
             <div>
               <span>Meta</span>
-
-              <strong>
-                ${formatNumber(
-                  progress.meta
-                )}
-              </strong>
+              <strong>${formatNumber(progress.meta)}</strong>
             </div>
 
             <div>
               <span>Avance validado</span>
-
               <strong>
-                ${formatNumber(
-                  progress.avance_validado
-                )}
+                ${formatNumber(progress.avance_validado)}
               </strong>
             </div>
 
             <div>
               <span>En revisión</span>
-
               <strong>
-                ${formatNumber(
-                  progress.avance_en_revision
-                )}
+                ${formatNumber(progress.avance_en_revision)}
               </strong>
             </div>
 
             <div>
               <span>Pendiente</span>
-
               <strong>
-                ${formatNumber(
-                  progress.pendiente_real
-                )}
+                ${formatNumber(progress.pendiente_real)}
               </strong>
             </div>
           </div>
@@ -2936,69 +2854,75 @@ async function openReviewDetail(objectId) {
             class="form-map"
           ></div>
 
-          <div class="form-section-title">
-            Valoración
-          </div>
+          <section class="pumi-valuation-card">
+            <div class="form-section-title">
+              Valoración
+            </div>
 
-          <label class="review-observation-field">
-            Observaciones de revisión
+            <div class="pumi-valuation-layout">
+              <label class="review-observation-field">
+                <span>
+                  Observaciones de revisión
+                </span>
 
-            <textarea
-              id="review-observations"
-              rows="5"
-              placeholder="Digite observaciones, recomendaciones o motivos de devolución..."
-            ></textarea>
-          </label>
+                <textarea
+                  id="review-observations"
+                  rows="6"
+                  placeholder="Digite observaciones, recomendaciones o motivos de devolución..."
+                ></textarea>
+              </label>
 
-          <div class="review-actions review-actions-large">
-            ${
-              state.currentReviewLevel === "REGIONAL"
-                ? `
-                    <button
-                      id="btn-review-approve"
-                      class="btn btn-primary"
-                    >
-                      ✅ Revisar y enviar a Coordinación Nacional
-                    </button>
+              <div class="review-actions review-actions-large">
+                ${
+                  state.currentReviewLevel === "REGIONAL"
+                    ? `
+                        <button
+                          id="btn-review-approve"
+                          class="btn btn-primary"
+                        >
+                          ✅ Revisar y enviar a Coordinación Nacional
+                        </button>
 
-                    <button
-                      id="btn-review-return"
-                      class="btn btn-warning"
-                    >
-                      ↩️ Devolver a Delegación
-                    </button>
+                        <button
+                          id="btn-review-return"
+                          class="btn btn-warning"
+                        >
+                          ↩️ Devolver a Delegación
+                        </button>
 
-                    <button
-                      id="btn-review-edit"
-                      class="btn btn-secondary"
-                    >
-                      ✏️ Editar registro
-                    </button>
+                        <button
+                          id="btn-review-edit"
+                          class="btn btn-secondary"
+                        >
+                          ✏️ Editar registro
+                        </button>
 
-                    <button
-                      id="btn-review-delete"
-                      class="btn btn-danger"
-                    >
-                      🗑️ Eliminar registro
-                    </button>
-                  `
-                : `
-                    <button
-                      id="btn-review-approve"
-                      class="btn btn-primary"
-                    >
-                      ✅ Validar nacionalmente
-                    </button>
+                        <button
+                          id="btn-review-delete"
+                          class="btn btn-danger"
+                        >
+                          🗑️ Eliminar registro
+                        </button>
+                      `
+                    : `
+                        <button
+                          id="btn-review-approve"
+                          class="btn btn-primary"
+                        >
+                          ✅ Validar nacionalmente
+                        </button>
 
-                    <button
-                      id="btn-review-return"
-                      class="btn btn-warning"
-                    >
-                      ↩️ Observar registro
-                    </button>
-                  `
-            }
-          </div>
+                        <button
+                          id="btn-review-return"
+                          class="btn btn-warning"
+                        >
+                          ↩️ Observar registro
+                        </button>
+                      `
+                }
+              </div>
+            </div>
+          </section>
         </article>
       </article>
     `;
@@ -3050,7 +2974,6 @@ async function openReviewDetail(objectId) {
             "Debe indicar una observación para devolver u observar el registro.",
             true
           );
-
           return;
         }
 
@@ -3104,9 +3027,7 @@ async function openReviewDetail(objectId) {
           }
 
           try {
-            await api.deleteActivity(
-              objectId
-            );
+            await api.deleteActivity(objectId);
 
             await loadData();
             renderReviewModule();
@@ -3115,10 +3036,7 @@ async function openReviewDetail(objectId) {
               "Registro eliminado."
             );
           } catch (error) {
-            showToast(
-              error.message,
-              true
-            );
+            showToast(error.message, true);
           }
         }
       );
@@ -3338,17 +3256,11 @@ function renderNotifications() {
             (item) => `
               <article class="notification-item">
                 <strong>
-                  ${escapeHtml(
-                    item.message
-                  )}
+                  ${escapeHtml(item.message)}
                 </strong>
 
                 <small>
-                  ${new Date(
-                    item.date
-                  ).toLocaleString(
-                    "es-CR"
-                  )}
+                  ${new Date(item.date).toLocaleString("es-CR")}
                 </small>
               </article>
             `
@@ -3378,7 +3290,7 @@ function closeNotifications() {
 }
 
 /* =========================================================
-   MAPAS
+   MAPAS - PIN TIPO VIÑETA + UBICACIÓN APROXIMADA HISTÓRICA
 ========================================================= */
 
 function renderMap(features) {
@@ -3418,36 +3330,24 @@ function renderMap(features) {
       map.add(layer);
 
       const delegationColors =
-        buildDelegationColorMap(
-          features
-        );
+        buildDelegationColorMap(features);
 
-      for (
-        const feature
-        of features
-      ) {
+      const fallbackByDelegation =
+        buildDelegationGeometryMap();
+
+      features.forEach((feature, index) => {
         const attributes =
           feature.attributes || {};
 
-        const latitude =
-          numberOrNull(
-            attributes.latitud
+        const coordinates =
+          resolveFeatureCoordinates(
+            feature,
+            fallbackByDelegation,
+            index
           );
 
-        const longitude =
-          numberOrNull(
-            attributes.longitud
-          );
-
-        if (
-          latitude === null ||
-          longitude === null ||
-          latitude < -90 ||
-          latitude > 90 ||
-          longitude < -180 ||
-          longitude > 180
-        ) {
-          continue;
+        if (!coordinates) {
+          return;
         }
 
         const color =
@@ -3455,14 +3355,16 @@ function renderMap(features) {
             normalize(
               attributes.delegacion
             )
-          ) || [0, 43, 127];
+          ) || "#0b3b8f";
 
         layer.add(
           new Graphic({
             geometry: {
               type: "point",
-              longitude,
-              latitude,
+              longitude:
+                coordinates.longitude,
+              latitude:
+                coordinates.latitude,
 
               spatialReference: {
                 wkid: 4326
@@ -3470,23 +3372,20 @@ function renderMap(features) {
             },
 
             symbol: {
-              type: "simple-marker",
-              style: "diamond",
-              size: 18,
-              color,
-
-              outline: {
-                color: [
-                  255,
-                  255,
-                  255
-                ],
-
-                width: 2
-              }
+              type: "picture-marker",
+              url: createMarkerSvg(color),
+              width: "34px",
+              height: "44px",
+              yoffset: "13px"
             },
 
-            attributes,
+            attributes: {
+              ...attributes,
+              ubicacion_aproximada:
+                coordinates.approximate
+                  ? "Sí"
+                  : "No"
+            },
 
             popupTemplate: {
               title:
@@ -3499,11 +3398,12 @@ function renderMap(features) {
                 "<b>Participantes:</b> {cantidad_participantes}<br>" +
                 "<b>Estado regional:</b> {estado_regional}<br>" +
                 "<b>Estado nacional:</b> {estado_nacional}<br>" +
-                "<b>Lugar:</b> {lugar}"
+                "<b>Lugar:</b> {lugar}<br>" +
+                "<b>Ubicación aproximada:</b> {ubicacion_aproximada}"
             }
           })
         );
-      }
+      });
 
       state.mapView =
         new MapView({
@@ -3517,8 +3417,7 @@ function renderMap(features) {
             9.95
           ],
 
-          zoom:
-            7
+          zoom: 7
         });
 
       if (layer.graphics.length) {
@@ -3527,8 +3426,7 @@ function renderMap(features) {
             state.mapView.goTo(
               layer.graphics,
               {
-                padding:
-                  60
+                padding: 60
               }
             )
           )
@@ -3539,6 +3437,192 @@ function renderMap(features) {
         delegationColors
       );
     }
+  );
+}
+
+function buildDelegationGeometryMap() {
+  const map = new Map();
+
+  for (
+    const feature
+    of state.delegaciones
+  ) {
+    const attributes =
+      feature.attributes || {};
+
+    const name =
+      attributes.delegacion ||
+      attributes.Delegacion ||
+      attributes.DELEGACION ||
+      attributes.nombre ||
+      attributes.Nombre ||
+      "";
+
+    const geometry =
+      feature.geometry || {};
+
+    let longitude =
+      numberOrNull(
+        geometry.longitude ??
+        geometry.x ??
+        attributes.longitud ??
+        attributes.Longitud
+      );
+
+    let latitude =
+      numberOrNull(
+        geometry.latitude ??
+        geometry.y ??
+        attributes.latitud ??
+        attributes.Latitud
+      );
+
+    if (
+      !name ||
+      longitude === null ||
+      latitude === null
+    ) {
+      continue;
+    }
+
+    map.set(
+      normalize(name),
+      {
+        longitude,
+        latitude
+      }
+    );
+  }
+
+  return map;
+}
+
+function resolveFeatureCoordinates(
+  feature,
+  fallbackByDelegation,
+  index
+) {
+  const attributes =
+    feature.attributes || {};
+
+  const geometry =
+    feature.geometry || {};
+
+  let longitude =
+    numberOrNull(
+      attributes.longitud ??
+      geometry.longitude ??
+      geometry.x
+    );
+
+  let latitude =
+    numberOrNull(
+      attributes.latitud ??
+      geometry.latitude ??
+      geometry.y
+    );
+
+  if (
+    isValidCoordinate(
+      longitude,
+      latitude
+    )
+  ) {
+    return {
+      longitude,
+      latitude,
+      approximate: false
+    };
+  }
+
+  const delegation =
+    normalize(
+      attributes.delegacion
+    );
+
+  const fallback =
+    fallbackByDelegation.get(
+      delegation
+    );
+
+  if (!fallback) {
+    return null;
+  }
+
+  const jitter =
+    deterministicJitter(
+      attributes.OBJECTID ??
+      attributes.id_pumi ??
+      index
+    );
+
+  return {
+    longitude:
+      fallback.longitude +
+      jitter.longitude,
+
+    latitude:
+      fallback.latitude +
+      jitter.latitude,
+
+    approximate: true
+  };
+}
+
+function deterministicJitter(seedValue) {
+  const seed =
+    String(seedValue ?? "0");
+
+  let hash = 0;
+
+  for (
+    let index = 0;
+    index < seed.length;
+    index += 1
+  ) {
+    hash =
+      (
+        (hash << 5) -
+        hash +
+        seed.charCodeAt(index)
+      ) | 0;
+  }
+
+  const angle =
+    Math.abs(hash % 360) *
+    Math.PI /
+    180;
+
+  const ring =
+    1 +
+    Math.abs(hash % 5);
+
+  const radius =
+    0.0015 * ring;
+
+  return {
+    longitude:
+      Math.cos(angle) *
+      radius,
+
+    latitude:
+      Math.sin(angle) *
+      radius
+  };
+}
+
+function isValidCoordinate(
+  longitude,
+  latitude
+) {
+  return (
+    longitude !== null &&
+    latitude !== null &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    !(longitude === 0 && latitude === 0)
   );
 }
 
@@ -3559,14 +3643,18 @@ function renderReviewMap(row) {
       MapView,
       Graphic
     ) => {
-      const latitude =
-        numberOrNull(
-          row.latitud
-        );
+      const fallbackByDelegation =
+        buildDelegationGeometryMap();
 
-      const longitude =
-        numberOrNull(
-          row.longitud
+      const coordinates =
+        resolveFeatureCoordinates(
+          {
+            attributes: row,
+            geometry:
+              row.__geometry || null
+          },
+          fallbackByDelegation,
+          getObjectId(row)
         );
 
       const map = new Map({
@@ -3582,11 +3670,10 @@ function renderReviewMap(row) {
           map,
 
           center:
-            latitude !== null &&
-            longitude !== null
+            coordinates
               ? [
-                  longitude,
-                  latitude
+                  coordinates.longitude,
+                  coordinates.latitude
                 ]
               : [
                   -84.1,
@@ -3594,22 +3681,22 @@ function renderReviewMap(row) {
                 ],
 
           zoom:
-            latitude !== null &&
-            longitude !== null
+            coordinates
               ? 16
               : 7
         });
 
-      if (
-        latitude !== null &&
-        longitude !== null
-      ) {
+      if (coordinates) {
         state.reviewMapView.graphics.add(
           new Graphic({
             geometry: {
               type: "point",
-              longitude,
-              latitude,
+
+              longitude:
+                coordinates.longitude,
+
+              latitude:
+                coordinates.latitude,
 
               spatialReference: {
                 wkid: 4326
@@ -3617,24 +3704,30 @@ function renderReviewMap(row) {
             },
 
             symbol: {
-              type: "simple-marker",
-              style: "diamond",
-              size: 22,
-              color: [
-                0,
-                43,
-                127
-              ],
+              type: "picture-marker",
+              url: createMarkerSvg(
+                "#0b3b8f"
+              ),
+              width: "40px",
+              height: "50px",
+              yoffset: "15px"
+            },
 
-              outline: {
-                color: [
-                  255,
-                  255,
-                  255
-                ],
+            attributes: {
+              delegacion:
+                row.delegacion ||
+                "Actividad",
 
-                width: 2
-              }
+              aproximada:
+                coordinates.approximate
+                  ? "Sí"
+                  : "No"
+            },
+
+            popupTemplate: {
+              title: "{delegacion}",
+              content:
+                "<b>Ubicación aproximada:</b> {aproximada}"
             }
           })
         );
@@ -3658,22 +3751,26 @@ function buildDelegationColorMap(features) {
   );
 
   const palette = [
-    [0, 43, 127],
-    [180, 35, 24],
-    [24, 122, 74],
-    [198, 150, 39],
-    [105, 65, 198],
-    [0, 126, 167],
-    [199, 86, 0],
-    [121, 85, 72],
-    [194, 24, 91],
-    [67, 91, 47],
-    [76, 70, 152],
-    [0, 111, 107],
-    [139, 45, 90],
-    [84, 110, 122],
-    [145, 79, 0],
-    [37, 80, 145]
+    "#16a34a",
+    "#eab308",
+    "#7c3aed",
+    "#2563eb",
+    "#db2777",
+    "#ef4444",
+    "#14b8a6",
+    "#c026d3",
+    "#f97316",
+    "#0ea5e9",
+    "#0b3b8f",
+    "#65a30d",
+    "#9333ea",
+    "#0891b2",
+    "#be123c",
+    "#0369a1",
+    "#15803d",
+    "#ea580c",
+    "#6d28d9",
+    "#0f766e"
   ];
 
   return new Map(
@@ -3691,6 +3788,78 @@ function buildDelegationColorMap(features) {
       ]
     )
   );
+}
+
+function createMarkerSvg(color) {
+  const svg = `
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="64"
+      height="80"
+      viewBox="0 0 64 80"
+    >
+      <defs>
+        <filter
+          id="shadow"
+          x="-30%"
+          y="-30%"
+          width="160%"
+          height="180%"
+        >
+          <feDropShadow
+            dx="0"
+            dy="3"
+            stdDeviation="2.5"
+            flood-color="#000000"
+            flood-opacity="0.30"
+          />
+        </filter>
+
+        <linearGradient
+          id="shine"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="1"
+        >
+          <stop
+            offset="0%"
+            stop-color="#ffffff"
+            stop-opacity="0.42"
+          />
+
+          <stop
+            offset="50%"
+            stop-color="#ffffff"
+            stop-opacity="0"
+          />
+        </linearGradient>
+      </defs>
+
+      <path
+        filter="url(#shadow)"
+        d="M32 3C16.1 3 4 15.1 4 31c0 22.3 28 46 28 46s28-23.7 28-46C60 15.1 47.9 3 32 3z"
+        fill="${color}"
+        stroke="#ffffff"
+        stroke-width="3"
+      />
+
+      <path
+        d="M32 7C19 7 9 17 9 30c0 5.2 1.8 10.7 4.6 16C11 31 17.8 13.6 36 8.2A24 24 0 0 0 32 7z"
+        fill="url(#shine)"
+      />
+
+      <circle
+        cx="32"
+        cy="30"
+        r="11"
+        fill="#ffffff"
+        fill-opacity="0.96"
+      />
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function renderMapLegend(colorMap) {
@@ -3733,61 +3902,333 @@ function renderMapLegend(colorMap) {
   );
 
   legend.innerHTML = `
-    <strong>
-      Delegaciones
-    </strong>
+    <details class="pumi-map-legend-details">
+      <summary>
+        Delegaciones en el mapa
+      </summary>
 
-    <div class="map-legend-items">
-      ${[
-        ...colorMap.entries()
-      ]
-        .map(
-          (
-            [
-              delegationKey,
-              color
-            ]
-          ) => {
-            const delegation =
-              (
-                state.dashboard
-                  ?.delegations ||
-                []
-              ).find(
-                (item) =>
-                  normalize(
-                    item.delegacion
-                  ) ===
-                  delegationKey
-              )?.delegacion ||
-              getRows().find(
-                (row) =>
-                  normalize(
-                    row.delegacion
-                  ) ===
-                  delegationKey
-              )?.delegacion ||
-              delegationKey;
+      <div class="map-legend-items">
+        ${[
+          ...colorMap.entries()
+        ]
+          .map(
+            (
+              [
+                delegationKey,
+                color
+              ]
+            ) => {
+              const delegation =
+                (
+                  state.dashboard
+                    ?.delegations ||
+                  []
+                ).find(
+                  (item) =>
+                    normalize(
+                      item.delegacion
+                    ) ===
+                    delegationKey
+                )?.delegacion ||
+                getRows().find(
+                  (row) =>
+                    normalize(
+                      row.delegacion
+                    ) ===
+                    delegationKey
+                )?.delegacion ||
+                delegationKey;
 
-            return `
-              <span class="map-legend-item">
-                <i
-                  style="
-                    background:
-                    rgb(${color.join(",")})
-                  "
-                ></i>
+              return `
+                <span class="map-legend-item">
+                  <i
+                    style="
+                      background:
+                      ${color}
+                    "
+                  ></i>
 
-                ${escapeHtml(
-                  delegation
-                )}
-              </span>
-            `;
-          }
-        )
-        .join("")}
-    </div>
+                  ${escapeHtml(
+                    delegation
+                  )}
+                </span>
+              `;
+            }
+          )
+          .join("")}
+      </div>
+    </details>
   `;
+}
+
+/* =========================================================
+   ESTILOS VISUALES INYECTADOS
+   Permite aplicar el ajuste sin tocar app.css todavía.
+========================================================= */
+
+function injectVisualEnhancements() {
+  if (
+    document.getElementById(
+      "pumi-app-js-visual-fixes"
+    )
+  ) {
+    return;
+  }
+
+  const style =
+    document.createElement("style");
+
+  style.id =
+    "pumi-app-js-visual-fixes";
+
+  style.textContent = `
+    .pumi-delegation-selector {
+      display: grid;
+      gap: 14px;
+    }
+
+    .pumi-delegation-selector > label,
+    .pumi-review-filters label,
+    .pumi-valuation-card label {
+      color: #102a56;
+      font-weight: 800;
+    }
+
+    .pumi-select-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .pumi-select-row select,
+    .pumi-review-filters select {
+      width: 100%;
+      min-height: 58px;
+      padding: 0 18px;
+      border: 1px solid #d6e0ee;
+      border-radius: 16px;
+      background: #fff;
+      color: #12233f;
+      font: inherit;
+      font-weight: 700;
+      outline: none;
+      box-shadow: 0 8px 24px rgba(18, 48, 89, 0.06);
+    }
+
+    .pumi-select-row select:focus,
+    .pumi-review-filters select:focus {
+      border-color: #174ea6;
+      box-shadow:
+        0 0 0 4px rgba(23, 78, 166, 0.10),
+        0 8px 24px rgba(18, 48, 89, 0.06);
+    }
+
+    .pumi-delegation-preview {
+      min-height: 92px;
+    }
+
+    .pumi-mini-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .pumi-mini-kpi {
+      display: grid;
+      gap: 8px;
+      padding: 18px;
+      border: 1px solid #dce5f1;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
+      box-shadow: 0 10px 28px rgba(18, 48, 89, 0.06);
+    }
+
+    .pumi-mini-kpi span {
+      color: #66758b;
+      font-weight: 700;
+    }
+
+    .pumi-mini-kpi strong {
+      color: #003b8f;
+      font-size: 1.7rem;
+    }
+
+    .pumi-review-filters {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin: 22px 0 28px;
+    }
+
+    .pumi-review-filters label {
+      display: grid;
+      gap: 8px;
+    }
+
+    .review-compact-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: center;
+      padding: 24px;
+      margin-bottom: 16px;
+      border: 1px solid #dce5f1;
+      border-radius: 22px;
+      background: #fff;
+      box-shadow: 0 12px 30px rgba(18, 48, 89, 0.06);
+    }
+
+    .review-compact-card h3 {
+      margin: 10px 0 6px;
+      color: #003b8f;
+      font-size: 1.45rem;
+    }
+
+    .review-compact-card p {
+      color: #6a7688;
+      margin: 0 0 10px;
+    }
+
+    .review-compact-meta {
+      display: grid;
+      gap: 10px;
+      min-width: 260px;
+    }
+
+    .pumi-valuation-card {
+      margin-top: 26px;
+      padding: 24px;
+      border: 1px solid #dce5f1;
+      border-radius: 22px;
+      background: linear-gradient(180deg, #ffffff, #fbfdff);
+    }
+
+    .pumi-valuation-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .review-observation-field {
+      display: grid;
+      gap: 10px;
+    }
+
+    .review-observation-field textarea {
+      width: 100%;
+      min-height: 180px;
+      padding: 16px 18px;
+      border: 1px solid #d6e0ee;
+      border-radius: 16px;
+      resize: vertical;
+      font: inherit;
+      color: #162844;
+      background: #fff;
+      box-sizing: border-box;
+    }
+
+    .review-observation-field textarea:focus {
+      outline: none;
+      border-color: #174ea6;
+      box-shadow: 0 0 0 4px rgba(23, 78, 166, 0.10);
+    }
+
+    .review-actions-large {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .review-actions-large .btn {
+      width: 100%;
+      min-height: 62px;
+      white-space: normal;
+      text-align: center;
+      justify-content: center;
+    }
+
+    .map-legend {
+      margin-top: 14px;
+    }
+
+    .pumi-map-legend-details {
+      border: 1px solid #dce5f1;
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .pumi-map-legend-details summary {
+      cursor: pointer;
+      padding: 15px 18px;
+      color: #102a56;
+      font-weight: 800;
+      user-select: none;
+    }
+
+    .map-legend-items {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px 14px;
+      padding: 0 18px 18px;
+    }
+
+    .map-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      color: #34435a;
+      font-size: 0.92rem;
+    }
+
+    .map-legend-item i {
+      width: 14px;
+      height: 18px;
+      border-radius: 10px 10px 10px 2px;
+      transform: rotate(-45deg);
+      flex: 0 0 auto;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18);
+    }
+
+    @media (max-width: 1100px) {
+      .pumi-mini-kpi-grid,
+      .pumi-review-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .pumi-valuation-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .map-legend-items {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 700px) {
+      .pumi-select-row,
+      .review-compact-card {
+        grid-template-columns: 1fr;
+      }
+
+      .pumi-mini-kpi-grid,
+      .pumi-review-filters,
+      .review-actions-large,
+      .map-legend-items {
+        grid-template-columns: 1fr;
+      }
+
+      .review-compact-meta {
+        min-width: 0;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
 }
 
 /* =========================================================
