@@ -1109,3 +1109,467 @@ button {
     height: 350px;
   }
 }
+
+/* =========================================================
+   AJUSTES VISUALES PUMI 2026
+   DESPLEGABLES, REVISIÓN, MAPA Y RESPONSIVE
+========================================================= */
+
+/* SELECTOR DE DELEGACIONES EN PANEL */
+.pumi-delegation-selector {
+  display: grid;
+  gap: 16px;
+}
+
+.pumi-delegation-selector > label {
+  color: var(--blue-900);
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.pumi-select-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.pumi-select-row select {
+  width: 100%;
+  min-height: 58px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--text);
+  background: var(--white);
+  box-shadow: 0 8px 24px rgba(23, 38, 68, 0.06);
+  font-weight: 800;
+}
+
+.pumi-select-row select:focus {
+  outline: 4px solid rgba(18, 74, 158, 0.11);
+  border-color: var(--blue-700);
+}
+
+.pumi-select-row .btn {
+  min-width: 150px;
+}
+
+.pumi-delegation-preview {
+  min-height: 100px;
+}
+
+.pumi-mini-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pumi-mini-kpi {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-bottom: 4px solid var(--gold-600);
+  border-radius: 17px;
+  background:
+    linear-gradient(
+      180deg,
+      #ffffff,
+      #f8fbff
+    );
+  box-shadow: 0 10px 28px rgba(23, 38, 68, 0.07);
+}
+
+.pumi-mini-kpi span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.pumi-mini-kpi strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--blue-800);
+  font-size: 1.75rem;
+}
+
+/* FILTROS REGIONAL Y NACIONAL */
+.pumi-review-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 22px 0 28px;
+}
+
+.pumi-review-filters label {
+  display: grid;
+  gap: 8px;
+}
+
+.pumi-review-filters select {
+  min-height: 56px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  color: var(--text);
+  background: var(--white);
+  box-shadow: 0 7px 22px rgba(23, 38, 68, 0.05);
+  font-weight: 800;
+}
+
+.pumi-review-filters select:focus {
+  outline: 4px solid rgba(18, 74, 158, 0.11);
+  border-color: var(--blue-700);
+}
+
+/* BANDEJA DE REVISIÓN */
+.review-list {
+  display: grid;
+  gap: 16px;
+}
+
+.review-compact-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
+  gap: 26px;
+  align-items: center;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--white);
+  box-shadow: 0 12px 30px rgba(23, 38, 68, 0.07);
+}
+
+.review-compact-card h3 {
+  margin: 12px 0 5px;
+  color: var(--blue-800);
+  font-size: 1.45rem;
+}
+
+.review-compact-card p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.review-compact-card > div:first-child > strong {
+  display: block;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.review-compact-meta {
+  display: grid;
+  gap: 12px;
+}
+
+.review-compact-meta > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.review-compact-meta strong {
+  color: var(--blue-900);
+}
+
+.review-counter {
+  min-width: 120px;
+  padding: 16px 20px;
+  border-radius: 17px;
+  color: var(--white);
+  background:
+    linear-gradient(
+      135deg,
+      var(--blue-800),
+      var(--blue-700)
+    );
+  text-align: center;
+  box-shadow: 0 12px 26px rgba(0, 43, 127, 0.19);
+}
+
+.review-counter span,
+.review-counter strong {
+  display: block;
+}
+
+.review-counter span {
+  font-size: 0.76rem;
+  font-weight: 800;
+  opacity: 0.82;
+}
+
+.review-counter strong {
+  margin-top: 5px;
+  font-size: 1.7rem;
+}
+
+/* DETALLE DE REVISIÓN */
+.review-detail-page {
+  display: grid;
+  gap: 18px;
+}
+
+.review-detail-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+}
+
+.record-detail-section {
+  margin-top: 24px;
+}
+
+.record-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.record-detail-item {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: #fbfdff;
+}
+
+.record-detail-item span,
+.record-detail-item strong {
+  display: block;
+}
+
+.record-detail-item span {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.record-detail-item strong {
+  color: var(--blue-900);
+  line-height: 1.48;
+  overflow-wrap: anywhere;
+}
+
+/* VALORACIÓN ORDENADA */
+.pumi-valuation-card {
+  margin-top: 28px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background:
+    linear-gradient(
+      180deg,
+      #ffffff,
+      #f9fbff
+    );
+  box-shadow: 0 12px 30px rgba(23, 38, 68, 0.06);
+}
+
+.pumi-valuation-card .form-section-title {
+  margin-top: 0;
+}
+
+.pumi-valuation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(330px, 0.85fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.review-observation-field {
+  display: grid;
+  gap: 10px;
+  color: var(--blue-900);
+  font-weight: 900;
+}
+
+.review-observation-field textarea {
+  width: 100%;
+  min-height: 190px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  color: var(--text);
+  background: var(--white);
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.review-observation-field textarea:focus {
+  outline: 4px solid rgba(18, 74, 158, 0.11);
+  border-color: var(--blue-700);
+}
+
+.review-actions-large {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.review-actions-large .btn {
+  width: 100%;
+  min-height: 66px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 18px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* LEYENDA DEL MAPA */
+.map-legend {
+  margin-top: 14px;
+}
+
+.pumi-map-legend-details {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--white);
+}
+
+.pumi-map-legend-details summary {
+  cursor: pointer;
+  padding: 16px 18px;
+  color: var(--blue-900);
+  font-weight: 900;
+  user-select: none;
+}
+
+.pumi-map-legend-details summary:hover {
+  background: var(--blue-100);
+}
+
+.map-legend-items {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 0 18px 18px;
+}
+
+.map-legend-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #415068;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.map-legend-item i {
+  width: 14px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 10px 10px 10px 2px;
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
+/* BOTONES Y CONTROLES */
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-warning {
+  background:
+    linear-gradient(
+      135deg,
+      #d99c00,
+      #efad00
+    );
+}
+
+.btn-danger {
+  background:
+    linear-gradient(
+      135deg,
+      #b42318,
+      #cf2b1f
+    );
+}
+
+.status-badge {
+  align-items: center;
+  min-height: 30px;
+}
+
+/* MAPAS */
+.map-container,
+.form-map {
+  border: 1px solid var(--border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+/* RESPONSIVE */
+@media (max-width: 1180px) {
+  .pumi-mini-kpi-grid,
+  .pumi-review-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .record-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pumi-valuation-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .map-legend-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .pumi-select-row,
+  .review-compact-card {
+    grid-template-columns: 1fr;
+  }
+
+  .pumi-mini-kpi-grid,
+  .pumi-review-filters,
+  .record-detail-grid,
+  .review-actions-large,
+  .map-legend-items {
+    grid-template-columns: 1fr;
+  }
+
+  .pumi-select-row .btn {
+    width: 100%;
+  }
+
+  .review-compact-meta {
+    min-width: 0;
+  }
+
+  .review-detail-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .module-heading {
+    align-items: flex-start;
+    gap: 16px;
+    flex-direction: column;
+  }
+
+  .review-counter {
+    width: 100%;
+  }
+}
