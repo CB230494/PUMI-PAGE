@@ -3421,16 +3421,9 @@ function renderMap(features) {
       const delegationGroups =
         buildDelegationMapGroups(features);
 
-      const delegationColors =
-        buildDelegationColorMap(
-          delegationGroups.map(
-            (group) => ({
-              attributes: {
-                delegacion:
-                  group.delegacion
-              }
-            })
-          )
+      const regionColors =
+        buildRegionColorMap(
+          delegationGroups
         );
 
       const fallbackByDelegation =
@@ -3450,9 +3443,9 @@ function renderMap(features) {
           }
 
           const color =
-            delegationColors.get(
+            regionColors.get(
               normalize(
-                group.delegacion
+                group.direccion_regional
               )
             ) || "#0b3b8f";
 
@@ -3486,6 +3479,9 @@ function renderMap(features) {
               attributes: {
                 delegacion:
                   group.delegacion,
+
+                direccion_regional:
+                  group.direccion_regional,
 
                 total_actividades:
                   group.activities.length,
@@ -3546,7 +3542,7 @@ function renderMap(features) {
       }
 
       renderMapLegend(
-        delegationColors
+        regionColors
       );
     }
   );
@@ -3577,6 +3573,13 @@ function buildDelegationMapGroups(features) {
         {
           delegacion:
             delegation,
+
+          direccion_regional:
+            String(
+              row.direccion_regional ||
+              row.region ||
+              "Sin región"
+            ).trim(),
 
           features: [],
 
@@ -3738,6 +3741,10 @@ function buildDelegationPopupHtml(
           ${activities.length}
           actividad(es)
         </span>
+      </div>
+
+      <div class="pumi-map-popup-region">
+        ${escapeHtml(group.direccion_regional)}
       </div>
 
       <div class="pumi-map-popup-list">
@@ -4152,13 +4159,16 @@ function renderReviewMap(row) {
   );
 }
 
-function buildDelegationColorMap(features) {
-  const delegations = [
+function buildRegionColorMap(groups) {
+  const regions = [
     ...new Set(
-      features
+      (groups || [])
         .map(
-          (feature) =>
-            feature.attributes?.delegacion
+          (group) =>
+            String(
+              group.direccion_regional ||
+              "Sin región"
+            ).trim()
         )
         .filter(Boolean)
     )
@@ -4167,36 +4177,27 @@ function buildDelegationColorMap(features) {
   );
 
   const palette = [
-    "#16a34a",
-    "#eab308",
-    "#7c3aed",
-    "#2563eb",
-    "#db2777",
-    "#ef4444",
-    "#14b8a6",
-    "#c026d3",
-    "#f97316",
-    "#0ea5e9",
     "#0b3b8f",
-    "#65a30d",
-    "#9333ea",
-    "#0891b2",
+    "#16a34a",
+    "#7c3aed",
+    "#db2777",
+    "#f97316",
+    "#14b8a6",
+    "#eab308",
+    "#2563eb",
     "#be123c",
-    "#0369a1",
-    "#15803d",
+    "#0891b2",
+    "#65a30d",
+    "#c026d3",
     "#ea580c",
-    "#6d28d9",
-    "#0f766e"
+    "#0f766e",
+    "#9333ea"
   ];
 
   return new Map(
-    delegations.map(
-      (
-        delegation,
-        index
-      ) => [
-        normalize(delegation),
-
+    regions.map(
+      (region, index) => [
+        normalize(region),
         palette[
           index %
           palette.length
@@ -4317,10 +4318,28 @@ function renderMapLegend(colorMap) {
     "hidden"
   );
 
+  const regionNames = new Map();
+
+  for (const row of getRows()) {
+    const region =
+      String(
+        row.direccion_regional ||
+        row.region ||
+        ""
+      ).trim();
+
+    if (region) {
+      regionNames.set(
+        normalize(region),
+        region
+      );
+    }
+  }
+
   legend.innerHTML = `
     <details class="pumi-map-legend-details">
       <summary>
-        Delegaciones en el mapa
+        Colores por Dirección Regional
       </summary>
 
       <div class="map-legend-items">
@@ -4330,46 +4349,24 @@ function renderMapLegend(colorMap) {
           .map(
             (
               [
-                delegationKey,
+                regionKey,
                 color
               ]
-            ) => {
-              const delegation =
-                (
-                  state.dashboard
-                    ?.delegations ||
-                  []
-                ).find(
-                  (item) =>
-                    normalize(
-                      item.delegacion
-                    ) ===
-                    delegationKey
-                )?.delegacion ||
-                getRows().find(
-                  (row) =>
-                    normalize(
-                      row.delegacion
-                    ) ===
-                    delegationKey
-                )?.delegacion ||
-                delegationKey;
+            ) => `
+              <span class="map-legend-item">
+                <i
+                  style="
+                    background:
+                    ${color}
+                  "
+                ></i>
 
-              return `
-                <span class="map-legend-item">
-                  <i
-                    style="
-                      background:
-                      ${color}
-                    "
-                  ></i>
-
-                  ${escapeHtml(
-                    delegation
-                  )}
-                </span>
-              `;
-            }
+                ${escapeHtml(
+                  regionNames.get(regionKey) ||
+                  regionKey
+                )}
+              </span>
+            `
           )
           .join("")}
       </div>
@@ -4463,6 +4460,13 @@ function injectVisualEnhancements() {
       font-size: 0.78rem;
       font-weight: 700;
       white-space: nowrap;
+    }
+
+    .pumi-map-popup-region {
+      margin: -4px 0 12px;
+      color: #66758b;
+      font-size: 0.78rem;
+      font-weight: 700;
     }
 
     .pumi-map-popup-list {
