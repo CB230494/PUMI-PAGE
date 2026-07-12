@@ -1,14 +1,14 @@
-import {
-  APP_CONFIG
-} from "../config/config.js";
+import { APP_CONFIG } from "../config/config.js";
 
 export class ApiService {
   constructor() {
     this.token =
-      localStorage.getItem(
-        "pumi_jwt"
-      ) || "";
+      localStorage.getItem("pumi_jwt") || "";
   }
+
+  /* =========================================================
+     TOKEN
+  ========================================================= */
 
   setToken(token) {
     this.token = token || "";
@@ -25,14 +25,13 @@ export class ApiService {
     }
   }
 
-  async request(
-    path,
-    options = {}
-  ) {
-    const headers = {
-      "Content-Type":
-        "application/json",
+  /* =========================================================
+     PETICIÓN GENERAL
+  ========================================================= */
 
+  async request(path, options = {}) {
+    const headers = {
+      "Content-Type": "application/json",
       ...(options.headers || {})
     };
 
@@ -41,19 +40,17 @@ export class ApiService {
         `Bearer ${this.token}`;
     }
 
-    const response =
-      await fetch(
-        `${APP_CONFIG.apiBaseUrl}${path}`,
-        {
-          ...options,
-          headers
-        }
-      );
+    const response = await fetch(
+      `${APP_CONFIG.apiBaseUrl}${path}`,
+      {
+        ...options,
+        headers
+      }
+    );
 
-    const data =
-      await response
-        .json()
-        .catch(() => ({}));
+    const data = await response
+      .json()
+      .catch(() => ({}));
 
     if (!response.ok) {
       throw new Error(
@@ -64,6 +61,10 @@ export class ApiService {
 
     return data;
   }
+
+  /* =========================================================
+     AUTENTICACIÓN
+  ========================================================= */
 
   login(username, password) {
     return this.request(
@@ -85,39 +86,61 @@ export class ApiService {
     );
   }
 
-  getActivities() {
+  /* =========================================================
+     PANEL CONSOLIDADO
+  ========================================================= */
+
+  getDashboard(delegacion = "") {
+    const params =
+      new URLSearchParams();
+
+    if (delegacion) {
+      params.set(
+        "delegacion",
+        delegacion
+      );
+    }
+
+    const query =
+      params.toString();
+
     return this.request(
-      APP_CONFIG.endpoints.actividades
+      `/api/dashboard${query ? `?${query}` : ""}`
+    );
+  }
+
+  /* =========================================================
+     ACTIVIDADES
+  ========================================================= */
+
+  getActivities(where = "") {
+    const params =
+      new URLSearchParams();
+
+    if (where) {
+      params.set(
+        "where",
+        where
+      );
+    }
+
+    const query =
+      params.toString();
+
+    return this.request(
+      `${APP_CONFIG.endpoints.actividades}${query ? `?${query}` : ""}`
+    );
+  }
+
+  getActivityDetail(objectId) {
+    return this.request(
+      `/api/actividades/${objectId}`
     );
   }
 
   getActivityOptions() {
     return this.request(
       "/api/actividad-opciones"
-    );
-  }
-
-  getCatalogs() {
-    return this.request(
-      APP_CONFIG.endpoints.catalogos
-    );
-  }
-
-  getDelegations() {
-    return this.request(
-      APP_CONFIG.endpoints.delegaciones
-    );
-  }
-
-  getSummary() {
-    return this.request(
-      APP_CONFIG.endpoints.resumen
-    );
-  }
-
-  getUsers() {
-    return this.request(
-      APP_CONFIG.endpoints.usuarios
     );
   }
 
@@ -143,7 +166,7 @@ export class ApiService {
     attributes
   ) {
     return this.request(
-      `${APP_CONFIG.endpoints.actividades}/${objectId}`,
+      `/api/actividades/${objectId}`,
       {
         method: "PATCH",
 
@@ -156,20 +179,30 @@ export class ApiService {
 
   deleteActivity(objectId) {
     return this.request(
-      `${APP_CONFIG.endpoints.actividades}/${objectId}`,
+      `/api/actividades/${objectId}`,
       {
         method: "DELETE"
       }
     );
   }
 
+  /* =========================================================
+     BANDEJA REGIONAL
+  ========================================================= */
+
+  getRegionalReviewQueue() {
+    return this.request(
+      "/api/revision-regional"
+    );
+  }
+
   regionalReview(
     objectId,
     status,
-    observations
+    observations = ""
   ) {
     return this.request(
-      `${APP_CONFIG.endpoints.actividades}/${objectId}/revision-regional`,
+      `/api/actividades/${objectId}/revision-regional`,
       {
         method: "POST",
 
@@ -181,13 +214,23 @@ export class ApiService {
     );
   }
 
+  /* =========================================================
+     BANDEJA COORDINADOR NACIONAL
+  ========================================================= */
+
+  getNationalReviewQueue() {
+    return this.request(
+      "/api/revision-nacional"
+    );
+  }
+
   nationalReview(
     objectId,
     status,
-    observations
+    observations = ""
   ) {
     return this.request(
-      `${APP_CONFIG.endpoints.actividades}/${objectId}/validacion-nacional`,
+      `/api/actividades/${objectId}/validacion-nacional`,
       {
         method: "POST",
 
@@ -196,6 +239,69 @@ export class ApiService {
           observations
         })
       }
+    );
+  }
+
+  /* =========================================================
+     CATÁLOGOS
+  ========================================================= */
+
+  getCatalogs() {
+    return this.request(
+      APP_CONFIG.endpoints.catalogos
+    );
+  }
+
+  /* =========================================================
+     DELEGACIONES
+  ========================================================= */
+
+  getDelegations() {
+    return this.request(
+      APP_CONFIG.endpoints.delegaciones
+    );
+  }
+
+  /* =========================================================
+     RESUMEN
+  ========================================================= */
+
+  getSummary() {
+    return this.request(
+      APP_CONFIG.endpoints.resumen
+    );
+  }
+
+  /* =========================================================
+     USUARIOS
+  ========================================================= */
+
+  getUsers() {
+    return this.request(
+      APP_CONFIG.endpoints.usuarios
+    );
+  }
+
+  createUser(attributes) {
+    return this.request(
+      APP_CONFIG.endpoints.usuarios,
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          attributes
+        })
+      }
+    );
+  }
+
+  /* =========================================================
+     SCHEMA TEMPORAL
+  ========================================================= */
+
+  getSchema() {
+    return this.request(
+      "/api/schema"
     );
   }
 }
