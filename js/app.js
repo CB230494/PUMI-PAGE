@@ -21,7 +21,9 @@ const state = {
   selectedPoint: null,
   editingObjectId: null,
   currentReviewLevel: null,
-  currentPage: "dashboard"
+  currentPage: "dashboard",
+  dashboardDelegationFilter: "",
+  dashboardActivityFilter: ""
 };
 
 const $ = (id) => document.getElementById(id);
@@ -484,10 +486,8 @@ function renderConsolidatedDashboard() {
   renderProgramSummaryFromDashboard(dashboard.programs || []);
   renderStatusSummaryFromDashboard(dashboard.statuses || {});
   renderDelegationOverview(dashboard.delegations || []);
-  renderMap(
-    dashboard.map_features ||
-    state.actividades
-  );
+
+  renderDashboardMapFromFilters();
 }
 
 function getBreakdownPanel() {
@@ -952,6 +952,8 @@ function renderDelegationOverview(delegations) {
       ? "Delegaciones del programa"
       : "Delegaciones de la región";
 
+  const activities = getDashboardActivityNames();
+
   panel.innerHTML = `
     <div class="panel-header">
       <div>
@@ -961,35 +963,40 @@ function renderDelegationOverview(delegations) {
     </div>
 
     <div class="pumi-delegation-selector">
-      <label for="dashboard-delegation-select">
-        Consultar una delegación
-      </label>
+      <div class="pumi-dashboard-filter-grid">
+        <label>
+          Delegación
+          <select id="dashboard-delegation-select">
+            <option value="">Todas las delegaciones</option>
 
-      <div class="pumi-select-row">
-        <select id="dashboard-delegation-select">
-          <option value="">
-            Seleccione una delegación...
-          </option>
+            ${delegations
+              .map(
+                (item) => `
+                  <option value="${escapeHtml(item.delegacion)}">
+                    ${escapeHtml(item.delegacion)}
+                  </option>
+                `
+              )
+              .join("")}
+          </select>
+        </label>
 
-          ${delegations
-            .map(
-              (item) => `
-                <option value="${escapeHtml(item.delegacion)}">
-                  ${escapeHtml(item.delegacion)}
-                </option>
-              `
-            )
-            .join("")}
-        </select>
+        <label>
+          Actividad
+          <select id="dashboard-activity-select">
+            <option value="">Todas las actividades</option>
 
-        <button
-          type="button"
-          id="btn-dashboard-delegation"
-          class="btn btn-primary"
-          disabled
-        >
-          Ver detalle
-        </button>
+            ${activities
+              .map(
+                (activity) => `
+                  <option value="${escapeHtml(activity)}">
+                    ${escapeHtml(activity)}
+                  </option>
+                `
+              )
+              .join("")}
+          </select>
+        </label>
       </div>
 
       <div
@@ -997,41 +1004,62 @@ function renderDelegationOverview(delegations) {
         class="pumi-delegation-preview"
       >
         <div class="module-empty">
-          Seleccione una delegación para consultar sus indicadores.
+          Use los filtros para consultar el mapa y los indicadores.
         </div>
       </div>
     </div>
   `;
 
-  const select =
+  const delegationSelect =
     $("dashboard-delegation-select");
 
-  const button =
-    $("btn-dashboard-delegation");
+  const activitySelect =
+    $("dashboard-activity-select");
 
   const preview =
     $("dashboard-delegation-preview");
 
-  select?.addEventListener("change", () => {
-    const delegation =
-      select.value;
+  setSelectValue(
+    delegationSelect,
+    state.dashboardDelegationFilter
+  );
 
-    button.disabled =
-      !delegation;
+  setSelectValue(
+    activitySelect,
+    state.dashboardActivityFilter
+  );
 
-    if (!delegation) {
+  function applyDashboardFilters() {
+    state.dashboardDelegationFilter =
+      delegationSelect?.value || "";
+
+    state.dashboardActivityFilter =
+      activitySelect?.value || "";
+
+    renderDashboardMapFromFilters();
+
+    const selectedDelegation =
+      state.dashboardDelegationFilter;
+
+    if (!selectedDelegation) {
       preview.innerHTML = `
         <div class="module-empty">
-          Seleccione una delegación para consultar sus indicadores.
+          El mapa muestra ${
+            isNationalCoordinatorRole()
+              ? "las delegaciones con información del programa asignado."
+              : "las delegaciones que pertenecen a la región."
+          }
         </div>
       `;
+
+      toggleBreakdownPanel(false);
       return;
     }
 
     const item =
       delegations.find(
         (row) =>
-          row.delegacion === delegation
+          row.delegacion === selectedDelegation
       );
 
     preview.innerHTML = `
@@ -1065,19 +1093,80 @@ function renderDelegationOverview(delegations) {
         </div>
       </div>
     `;
-  });
 
-  button?.addEventListener(
-    "click",
-    async () => {
-      if (!select.value) {
-        return;
-      }
+    loadDelegationBreakdown(
+      selectedDelegation
+    );
+  }
 
-      await loadDelegationBreakdown(
-        select.value
-      );
+  delegationSelect?.addEventListener(
+    "change",
+    applyDashboardFilters
+  );
+
+  activitySelect?.addEventListener(
+    "change",
+    applyDashboardFilters
+  );
+
+  applyDashboardFilters();
+}
+
+function getDashboardActivityNames() {
+  return [
+    ...new Set(
+      getRows()
+        .map((row) =>
+          String(row.actividad || "").trim()
+        )
+        .filter(Boolean)
+        .filter(
+          (activity) =>
+            normalize(activity) !== "ACTIVIDAD"
+        )
+    )
+  ].sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
+}
+
+function getDashboardMapFeatures() {
+  const source =
+    state.dashboard?.map_features ||
+    state.actividades ||
+    [];
+
+  return source.filter((feature) => {
+    const row =
+      feature.attributes || {};
+
+    if (
+      state.dashboardDelegationFilter &&
+      normalize(row.delegacion) !==
+        normalize(
+          state.dashboardDelegationFilter
+        )
+    ) {
+      return false;
     }
+
+    if (
+      state.dashboardActivityFilter &&
+      normalize(row.actividad) !==
+        normalize(
+          state.dashboardActivityFilter
+        )
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function renderDashboardMapFromFilters() {
+  renderMap(
+    getDashboardMapFeatures()
   );
 }
 
@@ -3329,81 +3418,104 @@ function renderMap(features) {
 
       map.add(layer);
 
+      const delegationGroups =
+        buildDelegationMapGroups(features);
+
       const delegationColors =
-        buildDelegationColorMap(features);
+        buildDelegationColorMap(
+          delegationGroups.map(
+            (group) => ({
+              attributes: {
+                delegacion:
+                  group.delegacion
+              }
+            })
+          )
+        );
 
       const fallbackByDelegation =
         buildDelegationGeometryMap();
 
-      features.forEach((feature, index) => {
-        const attributes =
-          feature.attributes || {};
+      delegationGroups.forEach(
+        (group, index) => {
+          const coordinates =
+            resolveDelegationCoordinates(
+              group,
+              fallbackByDelegation,
+              index
+            );
 
-        const coordinates =
-          resolveFeatureCoordinates(
-            feature,
-            fallbackByDelegation,
-            index
-          );
+          if (!coordinates) {
+            return;
+          }
 
-        if (!coordinates) {
-          return;
-        }
+          const color =
+            delegationColors.get(
+              normalize(
+                group.delegacion
+              )
+            ) || "#0b3b8f";
 
-        const color =
-          delegationColors.get(
-            normalize(
-              attributes.delegacion
-            )
-          ) || "#0b3b8f";
+          layer.add(
+            new Graphic({
+              geometry: {
+                type: "point",
 
-        layer.add(
-          new Graphic({
-            geometry: {
-              type: "point",
-              longitude:
-                coordinates.longitude,
-              latitude:
-                coordinates.latitude,
+                longitude:
+                  coordinates.longitude,
 
-              spatialReference: {
-                wkid: 4326
+                latitude:
+                  coordinates.latitude,
+
+                spatialReference: {
+                  wkid: 4326
+                }
+              },
+
+              symbol: {
+                type: "picture-marker",
+
+                url:
+                  createMarkerSvg(color),
+
+                width: "38px",
+                height: "48px",
+                yoffset: "14px"
+              },
+
+              attributes: {
+                delegacion:
+                  group.delegacion,
+
+                total_actividades:
+                  group.activities.length,
+
+                ubicacion_aproximada:
+                  coordinates.approximate
+                    ? "Sí"
+                    : "No"
+              },
+
+              popupTemplate: {
+                title:
+                  "{delegacion}",
+
+                content: [
+                  {
+                    type: "text",
+
+                    text:
+                      buildDelegationPopupHtml(
+                        group,
+                        coordinates
+                      )
+                  }
+                ]
               }
-            },
-
-            symbol: {
-              type: "picture-marker",
-              url: createMarkerSvg(color),
-              width: "34px",
-              height: "44px",
-              yoffset: "13px"
-            },
-
-            attributes: {
-              ...attributes,
-              ubicacion_aproximada:
-                coordinates.approximate
-                  ? "Sí"
-                  : "No"
-            },
-
-            popupTemplate: {
-              title:
-                "{delegacion}",
-
-              content:
-                "<b>Programa:</b> {programa}<br>" +
-                "<b>Actividad:</b> {actividad}<br>" +
-                "<b>Responsable:</b> {responsable}<br>" +
-                "<b>Participantes:</b> {cantidad_participantes}<br>" +
-                "<b>Estado regional:</b> {estado_regional}<br>" +
-                "<b>Estado nacional:</b> {estado_nacional}<br>" +
-                "<b>Lugar:</b> {lugar}<br>" +
-                "<b>Ubicación aproximada:</b> {ubicacion_aproximada}"
-            }
-          })
-        );
-      });
+            })
+          );
+        }
+      );
 
       state.mapView =
         new MapView({
@@ -3440,6 +3552,258 @@ function renderMap(features) {
   );
 }
 
+function buildDelegationMapGroups(features) {
+  const grouped = new Map();
+
+  for (
+    const feature
+    of features || []
+  ) {
+    const row =
+      feature.attributes || {};
+
+    const delegation =
+      String(
+        row.delegacion ||
+        "Sin delegación"
+      ).trim();
+
+    const delegationKey =
+      normalize(delegation);
+
+    if (!grouped.has(delegationKey)) {
+      grouped.set(
+        delegationKey,
+        {
+          delegacion:
+            delegation,
+
+          features: [],
+
+          activities:
+            new Map()
+        }
+      );
+    }
+
+    const group =
+      grouped.get(delegationKey);
+
+    group.features.push(feature);
+
+    const program =
+      String(
+        row.programa ||
+        "Sin programa"
+      ).trim();
+
+    const activity =
+      String(
+        row.actividad ||
+        "Sin actividad"
+      ).trim();
+
+    if (
+      normalize(activity) ===
+      "ACTIVIDAD"
+    ) {
+      continue;
+    }
+
+    const key =
+      `${normalize(program)}|||${normalize(activity)}`;
+
+    if (
+      !group.activities.has(key)
+    ) {
+      group.activities.set(
+        key,
+        {
+          programa:
+            program,
+
+          actividad:
+            activity,
+
+          meta:
+            0,
+
+          avance:
+            0
+        }
+      );
+    }
+
+    const item =
+      group.activities.get(key);
+
+    if (isHistorical(row)) {
+      item.meta +=
+        numberValue(row.meta);
+
+      item.avance +=
+        numberValue(row.avance);
+    } else if (
+      isNationalApproved(row)
+    ) {
+      item.avance +=
+        numberValue(
+          row.avance_realizado
+        );
+    }
+  }
+
+  return [
+    ...grouped.values()
+  ]
+    .map((group) => ({
+      ...group,
+
+      activities: [
+        ...group.activities.values()
+      ]
+        .map((item) => ({
+          ...item,
+
+          pendiente:
+            Math.max(
+              item.meta -
+              item.avance,
+              0
+            )
+        }))
+        .sort((a, b) => {
+          const programComparison =
+            a.programa.localeCompare(
+              b.programa,
+              "es"
+            );
+
+          if (
+            programComparison !== 0
+          ) {
+            return programComparison;
+          }
+
+          return a.actividad.localeCompare(
+            b.actividad,
+            "es"
+          );
+        })
+    }))
+    .sort((a, b) =>
+      a.delegacion.localeCompare(
+        b.delegacion,
+        "es"
+      )
+    );
+}
+
+function buildDelegationPopupHtml(
+  group,
+  coordinates
+) {
+  const activities =
+    group.activities.length
+      ? group.activities
+      : [
+          {
+            programa:
+              "Sin programa",
+
+            actividad:
+              "Sin actividad",
+
+            meta:
+              0,
+
+            avance:
+              0,
+
+            pendiente:
+              0
+          }
+        ];
+
+  return `
+    <div class="pumi-map-popup">
+      <div class="pumi-map-popup-head">
+        <strong>
+          ${escapeHtml(
+            group.delegacion
+          )}
+        </strong>
+
+        <span>
+          ${activities.length}
+          actividad(es)
+        </span>
+      </div>
+
+      <div class="pumi-map-popup-list">
+        ${activities
+          .map(
+            (item) => `
+              <div class="pumi-map-popup-activity">
+                <div class="pumi-map-popup-program">
+                  ${escapeHtml(
+                    item.programa
+                  )}
+                </div>
+
+                <div class="pumi-map-popup-title">
+                  ${escapeHtml(
+                    item.actividad
+                  )}
+                </div>
+
+                <div class="pumi-map-popup-metrics">
+                  <span>
+                    Meta
+                    <strong>
+                      ${formatNumber(
+                        item.meta
+                      )}
+                    </strong>
+                  </span>
+
+                  <span>
+                    Avance
+                    <strong>
+                      ${formatNumber(
+                        item.avance
+                      )}
+                    </strong>
+                  </span>
+
+                  <span>
+                    Pendiente
+                    <strong>
+                      ${formatNumber(
+                        item.pendiente
+                      )}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+
+      ${
+        coordinates.approximate
+          ? `
+              <div class="pumi-map-popup-note">
+                Ubicación aproximada de la delegación.
+              </div>
+            `
+          : ""
+      }
+    </div>
+  `;
+}
+
 function buildDelegationGeometryMap() {
   const map = new Map();
 
@@ -3461,7 +3825,7 @@ function buildDelegationGeometryMap() {
     const geometry =
       feature.geometry || {};
 
-    let longitude =
+    const longitude =
       numberOrNull(
         geometry.longitude ??
         geometry.x ??
@@ -3469,7 +3833,7 @@ function buildDelegationGeometryMap() {
         attributes.Longitud
       );
 
-    let latitude =
+    const latitude =
       numberOrNull(
         geometry.latitude ??
         geometry.y ??
@@ -3479,8 +3843,10 @@ function buildDelegationGeometryMap() {
 
     if (
       !name ||
-      longitude === null ||
-      latitude === null
+      !isValidCoordinate(
+        longitude,
+        latitude
+      )
     ) {
       continue;
     }
@@ -3497,6 +3863,106 @@ function buildDelegationGeometryMap() {
   return map;
 }
 
+function resolveDelegationCoordinates(
+  group,
+  fallbackByDelegation,
+  index
+) {
+  const realCoordinates =
+    group.features
+      .map((feature) => {
+        const row =
+          feature.attributes || {};
+
+        const geometry =
+          feature.geometry || {};
+
+        const longitude =
+          numberOrNull(
+            row.longitud ??
+            geometry.longitude ??
+            geometry.x
+          );
+
+        const latitude =
+          numberOrNull(
+            row.latitud ??
+            geometry.latitude ??
+            geometry.y
+          );
+
+        if (
+          !isValidCoordinate(
+            longitude,
+            latitude
+          )
+        ) {
+          return null;
+        }
+
+        return {
+          longitude,
+          latitude
+        };
+      })
+      .filter(Boolean);
+
+  if (
+    realCoordinates.length
+  ) {
+    return {
+      longitude:
+        realCoordinates.reduce(
+          (
+            total,
+            item
+          ) =>
+            total +
+            item.longitude,
+          0
+        ) /
+        realCoordinates.length,
+
+      latitude:
+        realCoordinates.reduce(
+          (
+            total,
+            item
+          ) =>
+            total +
+            item.latitude,
+          0
+        ) /
+        realCoordinates.length,
+
+      approximate:
+        false
+    };
+  }
+
+  const fallback =
+    fallbackByDelegation.get(
+      normalize(
+        group.delegacion
+      )
+    );
+
+  if (!fallback) {
+    return null;
+  }
+
+  return {
+    longitude:
+      fallback.longitude,
+
+    latitude:
+      fallback.latitude,
+
+    approximate:
+      true
+  };
+}
+
 function resolveFeatureCoordinates(
   feature,
   fallbackByDelegation,
@@ -3508,14 +3974,14 @@ function resolveFeatureCoordinates(
   const geometry =
     feature.geometry || {};
 
-  let longitude =
+  const longitude =
     numberOrNull(
       attributes.longitud ??
       geometry.longitude ??
       geometry.x
     );
 
-  let latitude =
+  const latitude =
     numberOrNull(
       attributes.latitud ??
       geometry.latitude ??
@@ -3535,79 +4001,26 @@ function resolveFeatureCoordinates(
     };
   }
 
-  const delegation =
-    normalize(
-      attributes.delegacion
-    );
-
   const fallback =
     fallbackByDelegation.get(
-      delegation
+      normalize(
+        attributes.delegacion
+      )
     );
 
   if (!fallback) {
     return null;
   }
 
-  const jitter =
-    deterministicJitter(
-      attributes.OBJECTID ??
-      attributes.id_pumi ??
-      index
-    );
-
   return {
     longitude:
-      fallback.longitude +
-      jitter.longitude,
+      fallback.longitude,
 
     latitude:
-      fallback.latitude +
-      jitter.latitude,
+      fallback.latitude,
 
-    approximate: true
-  };
-}
-
-function deterministicJitter(seedValue) {
-  const seed =
-    String(seedValue ?? "0");
-
-  let hash = 0;
-
-  for (
-    let index = 0;
-    index < seed.length;
-    index += 1
-  ) {
-    hash =
-      (
-        (hash << 5) -
-        hash +
-        seed.charCodeAt(index)
-      ) | 0;
-  }
-
-  const angle =
-    Math.abs(hash % 360) *
-    Math.PI /
-    180;
-
-  const ring =
-    1 +
-    Math.abs(hash % 5);
-
-  const radius =
-    0.0015 * ring;
-
-  return {
-    longitude:
-      Math.cos(angle) *
-      radius,
-
-    latitude:
-      Math.sin(angle) *
-      radius
+    approximate:
+      true
   };
 }
 
@@ -3622,7 +4035,10 @@ function isValidCoordinate(
     longitude <= 180 &&
     latitude >= -90 &&
     latitude <= 90 &&
-    !(longitude === 0 && latitude === 0)
+    !(
+      longitude === 0 &&
+      latitude === 0
+    )
   );
 }
 
@@ -3987,6 +4403,127 @@ function injectVisualEnhancements() {
       gap: 14px;
     }
 
+    .pumi-dashboard-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .pumi-dashboard-filter-grid label {
+      display: grid;
+      gap: 8px;
+      color: #102a56;
+      font-weight: 800;
+    }
+
+    .pumi-dashboard-filter-grid select {
+      width: 100%;
+      min-height: 58px;
+      padding: 0 18px;
+      border: 1px solid #d6e0ee;
+      border-radius: 16px;
+      background: #fff;
+      color: #12233f;
+      font: inherit;
+      font-weight: 700;
+      outline: none;
+      box-shadow: 0 8px 24px rgba(18, 48, 89, 0.06);
+    }
+
+    .pumi-dashboard-filter-grid select:focus {
+      border-color: #174ea6;
+      box-shadow:
+        0 0 0 4px rgba(23, 78, 166, 0.10),
+        0 8px 24px rgba(18, 48, 89, 0.06);
+    }
+
+    .pumi-map-popup {
+      min-width: 320px;
+      max-width: 520px;
+      color: #162844;
+    }
+
+    .pumi-map-popup-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #dce5f1;
+    }
+
+    .pumi-map-popup-head strong {
+      color: #003b8f;
+      font-size: 1rem;
+    }
+
+    .pumi-map-popup-head span {
+      color: #66758b;
+      font-size: 0.78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pumi-map-popup-list {
+      display: grid;
+      gap: 10px;
+      max-height: 390px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .pumi-map-popup-activity {
+      padding: 12px;
+      border: 1px solid #dce5f1;
+      border-radius: 12px;
+      background: #f8fbff;
+    }
+
+    .pumi-map-popup-program {
+      color: #b27a08;
+      font-size: 0.72rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .pumi-map-popup-title {
+      margin-top: 5px;
+      color: #162844;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .pumi-map-popup-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .pumi-map-popup-metrics span {
+      display: grid;
+      gap: 3px;
+      padding: 8px;
+      border-radius: 9px;
+      background: #ffffff;
+      color: #66758b;
+      font-size: 0.72rem;
+    }
+
+    .pumi-map-popup-metrics strong {
+      color: #003b8f;
+      font-size: 1rem;
+    }
+
+    .pumi-map-popup-note {
+      margin-top: 10px;
+      color: #66758b;
+      font-size: 0.74rem;
+      font-style: italic;
+    }
+
     .pumi-delegation-selector > label,
     .pumi-review-filters label,
     .pumi-valuation-card label {
@@ -4196,7 +4733,8 @@ function injectVisualEnhancements() {
 
     @media (max-width: 1100px) {
       .pumi-mini-kpi-grid,
-      .pumi-review-filters {
+      .pumi-review-filters,
+      .pumi-dashboard-filter-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
@@ -4217,6 +4755,7 @@ function injectVisualEnhancements() {
 
       .pumi-mini-kpi-grid,
       .pumi-review-filters,
+      .pumi-dashboard-filter-grid,
       .review-actions-large,
       .map-legend-items {
         grid-template-columns: 1fr;
