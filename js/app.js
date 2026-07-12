@@ -9,13 +9,18 @@ const state = {
   catalogos: [],
   delegaciones: [],
   activityOptions: [],
+  dashboard: null,
+  regionalQueue: null,
+  nationalQueue: null,
   notificaciones: [],
   mapView: null,
+  reviewMapView: null,
   formMapView: null,
   formMapGraphics: null,
   formMapGraphicClass: null,
   selectedPoint: null,
-  editingObjectId: null
+  editingObjectId: null,
+  currentReviewLevel: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -32,13 +37,9 @@ async function initialize() {
   if (api.token) {
     try {
       const session = await api.me();
-
       state.user = session.user;
-
       showMain();
-
       await loadData();
-
       return;
     } catch {
       api.setToken("");
@@ -49,25 +50,13 @@ async function initialize() {
 }
 
 function bindEvents() {
-  $("login-form").addEventListener("submit", login);
-  $("btn-logout").addEventListener("click", logout);
-  $("btn-refresh").addEventListener("click", loadData);
-  $("btn-toggle-sidebar").addEventListener("click", toggleSidebar);
-
-  $("btn-open-notifications").addEventListener(
-    "click",
-    openNotifications
-  );
-
-  $("btn-close-notifications").addEventListener(
-    "click",
-    closeNotifications
-  );
-
-  $("drawer-backdrop").addEventListener(
-    "click",
-    closeNotifications
-  );
+  $("login-form")?.addEventListener("submit", login);
+  $("btn-logout")?.addEventListener("click", logout);
+  $("btn-refresh")?.addEventListener("click", loadData);
+  $("btn-toggle-sidebar")?.addEventListener("click", toggleSidebar);
+  $("btn-open-notifications")?.addEventListener("click", openNotifications);
+  $("btn-close-notifications")?.addEventListener("click", closeNotifications);
+  $("drawer-backdrop")?.addEventListener("click", closeNotifications);
 }
 
 /* =========================================================
@@ -79,7 +68,6 @@ async function login(event) {
 
   const username = $("login-username").value.trim();
   const password = $("login-password").value;
-
   const button = $("btn-login");
   const original = button.textContent;
 
@@ -87,19 +75,14 @@ async function login(event) {
   button.textContent = "Ingresando...";
 
   try {
-    const result = await api.login(
-      username,
-      password
-    );
+    const result = await api.login(username, password);
 
     api.setToken(result.token);
-
     state.user = result.user;
 
     $("login-password").value = "";
 
     showMain();
-
     await loadData();
   } catch (error) {
     showToast(error.message, true);
@@ -110,13 +93,13 @@ async function login(event) {
 }
 
 function showLogin() {
-  $("login-view").classList.remove("hidden");
-  $("main-view").classList.add("hidden");
+  $("login-view")?.classList.remove("hidden");
+  $("main-view")?.classList.add("hidden");
 }
 
 function showMain() {
-  $("login-view").classList.add("hidden");
-  $("main-view").classList.remove("hidden");
+  $("login-view")?.classList.add("hidden");
+  $("main-view")?.classList.remove("hidden");
 
   const name =
     state.user?.name ||
@@ -129,12 +112,8 @@ function showMain() {
 
   $("sidebar-user-name").textContent = name;
   $("sidebar-user-role").textContent = role;
-
-  $("sidebar-avatar").textContent =
-    name.charAt(0).toUpperCase();
-
-  $("welcome-title").textContent =
-    `Bienvenido, ${name}`;
+  $("sidebar-avatar").textContent = name.charAt(0).toUpperCase();
+  $("welcome-title").textContent = `Bienvenido, ${name}`;
 
   $("page-scope").textContent = [
     state.user?.region,
@@ -149,7 +128,6 @@ function showMain() {
 
 function logout() {
   api.setToken("");
-
   window.location.reload();
 }
 
@@ -158,13 +136,8 @@ function logout() {
 ========================================================= */
 
 function toggleSidebar() {
-  document
-    .querySelector(".sidebar")
-    .classList.toggle("compact");
-
-  document
-    .querySelector(".page-shell")
-    .classList.toggle("compact");
+  document.querySelector(".sidebar")?.classList.toggle("compact");
+  document.querySelector(".page-shell")?.classList.toggle("compact");
 }
 
 function buildNavigation() {
@@ -196,7 +169,7 @@ function buildNavigation() {
   if (
     role.includes("REGIONAL") ||
     role.includes("COORDIN") ||
-    role.includes("NACIONAL") ||
+    role === "NACIONAL" ||
     role.includes("ADMIN")
   ) {
     items.push({
@@ -207,7 +180,7 @@ function buildNavigation() {
   }
 
   if (
-    role.includes("NACIONAL") ||
+    role === "NACIONAL" ||
     role.includes("ADMIN")
   ) {
     items.push({
@@ -233,33 +206,26 @@ function buildNavigation() {
           data-page="${item.id}"
         >
           <span class="nav-icon">${item.icon}</span>
-
-          <span class="nav-label">
-            ${item.label}
-          </span>
+          <span class="nav-label">${item.label}</span>
         </button>
       `
     )
     .join("");
 
-  document
-    .querySelectorAll(".nav-item")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        document
-          .querySelectorAll(".nav-item")
-          .forEach((item) =>
-            item.classList.remove("active")
-          );
-
-        button.classList.add("active");
-
-        navigate(
-          button.dataset.page,
-          button.textContent.trim()
-        );
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll(".nav-item").forEach((item) => {
+        item.classList.remove("active");
       });
+
+      button.classList.add("active");
+
+      navigate(
+        button.dataset.page,
+        button.textContent.trim()
+      );
     });
+  });
 }
 
 /* =========================================================
@@ -267,19 +233,15 @@ function buildNavigation() {
 ========================================================= */
 
 function navigate(pageId, title) {
-  document
-    .querySelectorAll(".page")
-    .forEach((page) =>
-      page.classList.remove("active")
-    );
+  document.querySelectorAll(".page").forEach((page) => {
+    page.classList.remove("active");
+  });
 
   $("page-title").textContent = title;
 
   if (pageId === "dashboard") {
     $("dashboard-page").classList.add("active");
-
     renderDashboard();
-
     return;
   }
 
@@ -287,19 +249,16 @@ function navigate(pageId, title) {
 
   if (pageId === "delegacion") {
     renderActivityForm();
-
     return;
   }
 
   if (pageId === "mis-registros") {
     renderMyRecords();
-
     return;
   }
 
   if (pageId === "revision") {
-    renderRegionalModule();
-
+    renderReviewModule();
     return;
   }
 
@@ -310,12 +269,8 @@ function renderComing(title) {
   $("coming-page").innerHTML = `
     <article class="panel-card empty-state">
       <div class="empty-icon">🛠️</div>
-
       <h2>${escapeHtml(title)}</h2>
-
-      <p>
-        Este módulo será activado en la siguiente etapa.
-      </p>
+      <p>Este módulo será activado en la siguiente etapa.</p>
     </article>
   `;
 }
@@ -326,37 +281,50 @@ function renderComing(title) {
 
 async function loadData() {
   try {
+    const role = normalize(state.user?.role);
+
     const [
       activities,
       summary,
       catalogs,
       delegations,
-      activityOptions
+      activityOptions,
+      dashboard
     ] = await Promise.all([
       api.getActivities(),
       api.getSummary(),
       api.getCatalogs(),
       api.getDelegations(),
-      api.getActivityOptions()
+      api.getActivityOptions(),
+      api.getDashboard()
     ]);
 
-    state.actividades =
-      activities.features || [];
+    state.actividades = activities.features || [];
+    state.resumen = summary.features || [];
+    state.catalogos = catalogs.features || [];
+    state.delegaciones = delegations.features || [];
+    state.activityOptions = activityOptions.options || [];
+    state.dashboard = dashboard || null;
 
-    state.resumen =
-      summary.features || [];
+    state.regionalQueue = null;
+    state.nationalQueue = null;
 
-    state.catalogos =
-      catalogs.features || [];
+    if (
+      role.includes("REGIONAL") ||
+      role.includes("ADMIN")
+    ) {
+      state.regionalQueue = await api.getRegionalReviewQueue();
+    }
 
-    state.delegaciones =
-      delegations.features || [];
+    if (
+      role.includes("COORDIN") ||
+      role === "NACIONAL" ||
+      role.includes("ADMIN")
+    ) {
+      state.nationalQueue = await api.getNationalReviewQueue();
+    }
 
-    state.activityOptions =
-      activityOptions.options || [];
-
-    state.notificaciones =
-      createDerivedNotifications();
+    state.notificaciones = createDerivedNotifications();
 
     renderDashboard();
     renderNotifications();
@@ -392,8 +360,7 @@ function getCatalogValues(type) {
       getCatalogRows()
         .filter(
           (row) =>
-            normalize(row.tipo_catalogo) ===
-            normalizedType
+            normalize(row.tipo_catalogo) === normalizedType
         )
         .map((row) =>
           String(
@@ -404,32 +371,74 @@ function getCatalogValues(type) {
         )
         .filter(Boolean)
     )
-  ].sort((a, b) =>
-    a.localeCompare(b, "es")
-  );
-}
-
-function isCatalogActive(row) {
-  const active = normalize(row.activo);
-
-  return (
-    !active ||
-    active === "SI" ||
-    active === "SÍ" ||
-    active === "1" ||
-    active === "ACTIVO" ||
-    active === "ACTIVA"
-  );
+  ].sort((a, b) => a.localeCompare(b, "es"));
 }
 
 function isHistorical(row) {
-  return String(
-    row.archivo_origen || ""
-  ).trim() !== "";
+  return String(row.archivo_origen || "").trim() !== "";
 }
 
 function getObjectId(row) {
   return Number(row.OBJECTID);
+}
+
+function getCurrentRole() {
+  return normalize(state.user?.role);
+}
+
+function isDelegationRole() {
+  return getCurrentRole().includes("DELEG");
+}
+
+function isRegionalRole() {
+  return (
+    getCurrentRole().includes("REGIONAL") ||
+    getCurrentRole().includes("ADMIN")
+  );
+}
+
+function isNationalCoordinatorRole() {
+  return getCurrentRole().includes("COORDIN");
+}
+
+function workflowLabel(row) {
+  if (isHistorical(row)) {
+    return "Revisado";
+  }
+
+  const regional = normalize(row.estado_regional);
+  const national = normalize(row.estado_nacional);
+
+  if (
+    national.includes("VALIDAD") ||
+    national.includes("APROB")
+  ) {
+    return "Validado nacional";
+  }
+
+  if (
+    national.includes("OBSERV") ||
+    national.includes("RECHAZ")
+  ) {
+    return "Observado nacional";
+  }
+
+  if (
+    regional.includes("DEVUEL") ||
+    regional.includes("OBSERV")
+  ) {
+    return "Devuelto regional";
+  }
+
+  if (
+    regional.includes("REVISAD") ||
+    regional.includes("VERIFIC") ||
+    regional.includes("APROB")
+  ) {
+    return "Pendiente nacional";
+  }
+
+  return "Pendiente regional";
 }
 
 /* =========================================================
@@ -437,18 +446,161 @@ function getObjectId(row) {
 ========================================================= */
 
 function renderDashboard() {
-  ensureActivityBreakdownPanel();
-  renderKpis();
-  renderProgramSummary();
-  renderActivityBreakdown();
-  renderStatusSummary();
-  renderMap();
+  if (isDelegationRole()) {
+    renderDelegationDashboard();
+    return;
+  }
+
+  renderConsolidatedDashboard();
 }
 
-function buildProgressRows() {
+function renderDelegationDashboard() {
+  toggleBreakdownPanel(true);
+
+  renderKpisFromLocal();
+  renderProgramSummaryFromLocal();
+  renderActivityBreakdownFromLocal();
+  renderStatusSummaryFromLocal();
+  renderMap(state.actividades);
+
+  renderDelegationOverview([]);
+}
+
+function renderConsolidatedDashboard() {
+  toggleBreakdownPanel(false);
+
+  const dashboard = state.dashboard || {};
+
+  renderKpisFromDashboard(dashboard.kpis || {});
+  renderProgramSummaryFromDashboard(dashboard.programs || []);
+  renderStatusSummaryFromDashboard(dashboard.statuses || {});
+  renderDelegationOverview(dashboard.delegations || []);
+  renderMap(
+    dashboard.map_features ||
+    state.actividades
+  );
+}
+
+function getBreakdownPanel() {
+  let panel = $("activity-breakdown-panel");
+
+  if (panel) {
+    return panel;
+  }
+
+  const mapPanel =
+    $("dashboard-map")?.closest(".panel-card");
+
+  if (!mapPanel) {
+    return null;
+  }
+
+  panel = document.createElement("article");
+  panel.id = "activity-breakdown-panel";
+  panel.className = "panel-card hidden";
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <span class="panel-kicker">
+          Cumplimiento
+        </span>
+
+        <h3>
+          Desglose por actividad
+        </h3>
+      </div>
+    </div>
+
+    <div id="activity-summary"></div>
+  `;
+
+  mapPanel.insertAdjacentElement(
+    "beforebegin",
+    panel
+  );
+
+  return panel;
+}
+
+function toggleBreakdownPanel(visible) {
+  const panel = getBreakdownPanel();
+
+  if (!panel) {
+    return;
+  }
+
+  panel.classList.toggle(
+    "hidden",
+    !visible
+  );
+}
+
+function renderKpisFromDashboard(kpis) {
+  renderKpiCards([
+    ["Registros", numberValue(kpis.registros)],
+    ["Meta", numberValue(kpis.meta)],
+    ["Avance", numberValue(kpis.avance)],
+    ["Pendiente", numberValue(kpis.pendiente)],
+    [
+      "% avance",
+      `${numberValue(
+        kpis.porcentaje_avance
+      ).toFixed(1)}%`
+    ],
+    ["Participantes", numberValue(kpis.participantes)]
+  ]);
+}
+
+function renderKpisFromLocal() {
+  const rows = getRows();
+  const progress = buildProgressRows();
+
+  const meta = sumBy(progress, "meta");
+  const advance = sumBy(progress, "advance");
+  const pending = Math.max(meta - advance, 0);
+
+  const percentage =
+    meta > 0
+      ? (advance / meta) * 100
+      : 0;
+
+  const participants = rows.reduce(
+    (total, row) =>
+      total +
+      numberValue(
+        row.cantidad_participantes
+      ),
+    0
+  );
+
+  renderKpiCards([
+    ["Registros", rows.length],
+    ["Meta", meta],
+    ["Avance", advance],
+    ["Pendiente", pending],
+    ["% avance", `${percentage.toFixed(1)}%`],
+    ["Participantes", participants]
+  ]);
+}
+
+function renderKpiCards(values) {
+  $("dashboard-kpis").innerHTML = values
+    .map(
+      ([label, value]) => `
+        <article class="kpi-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${formatNumber(value)}</strong>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function buildProgressRows(rows = getRows()) {
   const grouped = new Map();
 
-  for (const row of getRows()) {
+  for (const row of rows) {
     const program =
       String(row.programa || "").trim();
 
@@ -509,61 +661,7 @@ function buildProgressRows() {
   });
 }
 
-function renderKpis() {
-  const rows = getRows();
-  const progress = buildProgressRows();
-
-  const meta = sumBy(progress, "meta");
-
-  const advance = sumBy(
-    progress,
-    "advance"
-  );
-
-  const pending = Math.max(
-    meta - advance,
-    0
-  );
-
-  const percentage =
-    meta > 0
-      ? (advance / meta) * 100
-      : 0;
-
-  const participants = rows.reduce(
-    (total, row) =>
-      total +
-      numberValue(
-        row.cantidad_participantes
-      ),
-    0
-  );
-
-  const values = [
-    ["Registros", rows.length],
-    ["Meta", meta],
-    ["Avance", advance],
-    ["Pendiente", pending],
-    ["% avance", `${percentage.toFixed(1)}%`],
-    ["Participantes", participants]
-  ];
-
-  $("dashboard-kpis").innerHTML = values
-    .map(
-      ([label, value]) => `
-        <article class="kpi-card">
-          <span>${escapeHtml(label)}</span>
-
-          <strong>
-            ${formatNumber(value)}
-          </strong>
-        </article>
-      `
-    )
-    .join("");
-}
-
-function renderProgramSummary() {
+function renderProgramSummaryFromLocal() {
   const grouped = {};
 
   for (const row of buildProgressRows()) {
@@ -575,9 +673,7 @@ function renderProgramSummary() {
     }
 
     grouped[row.program].meta += row.meta;
-
-    grouped[row.program].advance +=
-      row.advance;
+    grouped[row.program].advance += row.advance;
   }
 
   const programs = Object.entries(grouped)
@@ -589,78 +685,65 @@ function renderProgramSummary() {
 
       const percentage =
         data.meta > 0
-          ? (
-              data.advance /
-              data.meta
-            ) * 100
+          ? (data.advance / data.meta) * 100
           : 0;
 
       return {
-        program,
+        programa: program,
         meta: data.meta,
-        advance: data.advance,
-        pending,
-        percentage
+        avance: data.advance,
+        pendiente: pending,
+        porcentaje: percentage
       };
     })
     .sort(
       (a, b) =>
-        b.percentage - a.percentage
+        b.porcentaje - a.porcentaje
     );
 
+  renderProgramSummaryFromDashboard(
+    programs
+  );
+}
+
+function renderProgramSummaryFromDashboard(programs) {
   $("program-summary").innerHTML =
     programs.length
       ? programs
           .map(
             (item) => `
               <div class="program-progress-row">
-
                 <div
                   class="program-progress-name"
-                  title="${escapeHtml(
-                    item.program
-                  )}"
+                  title="${escapeHtml(item.programa)}"
                 >
-                  ${escapeHtml(item.program)}
+                  ${escapeHtml(item.programa)}
                 </div>
 
                 <div class="program-progress-center">
-
                   <div class="program-progress-track">
                     <div
                       class="program-progress-fill"
-                      style="
-                        width:${Math.min(
-                          item.percentage,
-                          100
-                        )}%
-                      "
+                      style="width:${Math.min(
+                        numberValue(item.porcentaje),
+                        100
+                      )}%"
                     ></div>
                   </div>
 
                   <div class="program-progress-detail">
                     Meta:
-                    <strong>
-                      ${formatNumber(item.meta)}
-                    </strong>
-
+                    <strong>${formatNumber(item.meta)}</strong>
                     · Avance:
-                    <strong>
-                      ${formatNumber(item.advance)}
-                    </strong>
-
+                    <strong>${formatNumber(item.avance)}</strong>
                     · Pendiente:
-                    <strong>
-                      ${formatNumber(item.pending)}
-                    </strong>
+                    <strong>${formatNumber(item.pendiente)}</strong>
                   </div>
-
                 </div>
 
                 <div class="program-progress-percentage">
-                  ${item.percentage.toFixed(1)}%
+                  ${numberValue(item.porcentaje).toFixed(1)}%
                 </div>
-
               </div>
             `
           )
@@ -672,53 +755,7 @@ function renderProgramSummary() {
         `;
 }
 
-function ensureActivityBreakdownPanel() {
-  if ($("activity-summary")) {
-    return;
-  }
-
-  const grid = document.querySelector(
-    "#dashboard-page .dashboard-grid"
-  );
-
-  if (!grid) {
-    return;
-  }
-
-  const panel =
-    document.createElement("article");
-
-  panel.className = "panel-card";
-
-  panel.innerHTML = `
-    <div class="panel-header">
-      <div>
-        <span class="panel-kicker">
-          Cumplimiento
-        </span>
-
-        <h3>
-          Desglose por actividad
-        </h3>
-      </div>
-    </div>
-
-    <div id="activity-summary"></div>
-  `;
-
-  grid.insertAdjacentElement(
-    "afterend",
-    panel
-  );
-}
-
-function renderActivityBreakdown() {
-  const container = $("activity-summary");
-
-  if (!container) {
-    return;
-  }
-
+function renderActivityBreakdownFromLocal() {
   const rows = buildProgressRows()
     .sort((a, b) => {
       const programComparison =
@@ -735,109 +772,89 @@ function renderActivityBreakdown() {
         b.activity,
         "es"
       );
-    });
+    })
+    .map((row) => ({
+      programa: row.program,
+      actividad: row.activity,
+      meta: row.meta,
+      avance: row.advance,
+      pendiente: row.pending,
+      porcentaje: row.percentage
+    }));
 
-  container.innerHTML = `
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Programa</th>
-            <th>Actividad</th>
-            <th>Meta</th>
-            <th>Avance</th>
-            <th>Pendiente</th>
-            <th>% avance</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          ${rows
-            .map(
-              (row) => `
-                <tr>
-                  <td>
-                    <strong>
-                      ${escapeHtml(row.program)}
-                    </strong>
-                  </td>
-
-                  <td>
-                    ${escapeHtml(row.activity)}
-                  </td>
-
-                  <td>
-                    ${formatNumber(row.meta)}
-                  </td>
-
-                  <td>
-                    ${formatNumber(row.advance)}
-                  </td>
-
-                  <td>
-                    ${formatNumber(row.pending)}
-                  </td>
-
-                  <td>
-                    <strong>
-                      ${row.percentage.toFixed(1)}%
-                    </strong>
-                  </td>
-                </tr>
-              `
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
+  renderActivityBreakdownTable(rows);
 }
 
-function workflowLabel(row) {
-  if (isHistorical(row)) {
-    return "Revisado";
+function renderActivityBreakdownTable(rows) {
+  const container = $("activity-summary");
+
+  if (!container) {
+    return;
   }
 
-  const regional = normalize(
-    row.estado_regional
-  );
+  container.innerHTML = rows.length
+    ? `
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Programa</th>
+                <th>Actividad</th>
+                <th>Meta</th>
+                <th>Avance</th>
+                <th>Pendiente</th>
+                <th>% avance</th>
+              </tr>
+            </thead>
 
-  const national = normalize(
-    row.estado_nacional
-  );
+            <tbody>
+              ${rows
+                .map(
+                  (row) => `
+                    <tr>
+                      <td>
+                        <strong>
+                          ${escapeHtml(row.programa)}
+                        </strong>
+                      </td>
 
-  if (
-    national.includes("VALIDAD") ||
-    national.includes("APROB")
-  ) {
-    return "Validado nacional";
-  }
+                      <td>
+                        ${escapeHtml(row.actividad)}
+                      </td>
 
-  if (
-    national.includes("OBSERV") ||
-    national.includes("RECHAZ")
-  ) {
-    return "Observado nacional";
-  }
+                      <td>
+                        ${formatNumber(row.meta)}
+                      </td>
 
-  if (
-    regional.includes("DEVUEL") ||
-    regional.includes("OBSERV")
-  ) {
-    return "Devuelto regional";
-  }
+                      <td>
+                        ${formatNumber(row.avance)}
+                      </td>
 
-  if (
-    regional.includes("REVISAD") ||
-    regional.includes("VERIFIC")
-  ) {
-    return "Pendiente nacional";
-  }
+                      <td>
+                        ${formatNumber(row.pendiente)}
+                      </td>
 
-  return "Pendiente regional";
+                      <td>
+                        <strong>
+                          ${numberValue(row.porcentaje).toFixed(1)}%
+                        </strong>
+                      </td>
+                    </tr>
+                  `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `
+    : `
+        <div class="module-empty">
+          No hay actividades disponibles.
+        </div>
+      `;
 }
 
-function renderStatusSummary() {
+function renderStatusSummaryFromLocal() {
   const grouped = {};
 
   for (const row of getRows()) {
@@ -847,19 +864,32 @@ function renderStatusSummary() {
       (grouped[status] || 0) + 1;
   }
 
+  renderStatusSummaryFromDashboard(grouped);
+}
+
+function renderStatusSummaryFromDashboard(statuses) {
   renderSimpleBars(
     "status-summary",
-    Object.entries(grouped)
+    Object.entries(statuses)
   );
 }
 
 function renderSimpleBars(id, values) {
+  const container = $(id);
+
+  if (!container) {
+    return;
+  }
+
   const max = Math.max(
     1,
-    ...values.map((item) => item[1])
+    ...values.map(
+      (item) =>
+        numberValue(item[1])
+    )
   );
 
-  $(id).innerHTML = values.length
+  container.innerHTML = values.length
     ? values
         .map(
           ([label, value]) => `
@@ -871,15 +901,18 @@ function renderSimpleBars(id, values) {
               <div class="bar-track">
                 <div
                   class="bar-fill"
-                  style="
-                    width:${
-                      (value / max) * 100
-                    }%
-                  "
+                  style="width:${
+                    (
+                      numberValue(value) /
+                      max
+                    ) * 100
+                  }%"
                 ></div>
               </div>
 
-              <strong>${value}</strong>
+              <strong>
+                ${formatNumber(value)}
+              </strong>
             </div>
           `
         )
@@ -889,6 +922,127 @@ function renderSimpleBars(id, values) {
           No hay datos disponibles.
         </p>
       `;
+}
+
+function renderDelegationOverview(delegations) {
+  let panel = $("delegation-overview-panel");
+
+  if (isDelegationRole()) {
+    panel?.remove();
+    return;
+  }
+
+  const mapPanel =
+    $("dashboard-map")?.closest(".panel-card");
+
+  if (!mapPanel) {
+    return;
+  }
+
+  if (!panel) {
+    panel = document.createElement("article");
+    panel.id = "delegation-overview-panel";
+    panel.className = "panel-card";
+
+    mapPanel.insertAdjacentElement(
+      "beforebegin",
+      panel
+    );
+  }
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <span class="panel-kicker">
+          Ámbito
+        </span>
+
+        <h3>
+          ${
+            isNationalCoordinatorRole()
+              ? "Delegaciones del programa"
+              : "Delegaciones de la región"
+          }
+        </h3>
+      </div>
+    </div>
+
+    <div class="delegation-summary-grid">
+      ${delegations
+        .map(
+          (item) => `
+            <button
+              type="button"
+              class="delegation-summary-card"
+              data-dashboard-delegation="${escapeHtml(
+                item.delegacion
+              )}"
+            >
+              <strong>
+                ${escapeHtml(item.delegacion)}
+              </strong>
+
+              <span>
+                Registros:
+                ${formatNumber(item.registros)}
+              </span>
+
+              <span>
+                Pendiente regional:
+                ${formatNumber(item.pendientes_regional)}
+              </span>
+
+              <span>
+                Pendiente nacional:
+                ${formatNumber(item.pendientes_nacional)}
+              </span>
+
+              <span>
+                Validados:
+                ${formatNumber(item.validados)}
+              </span>
+            </button>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+
+  panel
+    .querySelectorAll(
+      "[data-dashboard-delegation]"
+    )
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        async () => {
+          await loadDelegationBreakdown(
+            button.dataset.dashboardDelegation
+          );
+        }
+      );
+    });
+}
+
+async function loadDelegationBreakdown(delegation) {
+  try {
+    const dashboard =
+      await api.getDashboard(delegation);
+
+    toggleBreakdownPanel(true);
+
+    renderActivityBreakdownTable(
+      dashboard.activity_breakdown || []
+    );
+
+    $("activity-breakdown-panel")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 /* =========================================================
@@ -904,7 +1058,6 @@ function renderActivityForm(editingRow = null) {
 
   $("coming-page").innerHTML = `
     <article class="panel-card">
-
       <div class="module-heading">
         <div>
           <span class="panel-kicker">
@@ -925,12 +1078,9 @@ function renderActivityForm(editingRow = null) {
         id="activity-form"
         class="module-form"
       >
-
         <div class="form-grid">
-
           <label>
             Programa
-
             <select
               id="activity-program"
               required
@@ -939,13 +1089,11 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Actividad
-
             <select
               id="activity-name"
               required
             ></select>
           </label>
-
         </div>
 
         <div
@@ -954,10 +1102,8 @@ function renderActivityForm(editingRow = null) {
         ></div>
 
         <div class="form-grid">
-
           <label>
             Fecha de actividad
-
             <input
               id="activity-date"
               type="date"
@@ -967,7 +1113,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Hora
-
             <input
               id="activity-time"
               type="time"
@@ -976,7 +1121,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Avance realizado
-
             <input
               id="activity-advance"
               type="number"
@@ -988,14 +1132,12 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Responsable
-
             <input
               id="activity-responsible"
               type="text"
               required
             >
           </label>
-
         </div>
 
         <div class="form-section-title">
@@ -1003,10 +1145,8 @@ function renderActivityForm(editingRow = null) {
         </div>
 
         <div class="form-grid">
-
           <label>
             Hombres
-
             <input
               id="activity-men"
               type="number"
@@ -1017,7 +1157,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Mujeres
-
             <input
               id="activity-women"
               type="number"
@@ -1028,7 +1167,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Edad 10-18
-
             <input
               id="activity-age-10-18"
               type="number"
@@ -1039,7 +1177,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Edad 19-30
-
             <input
               id="activity-age-19-30"
               type="number"
@@ -1050,7 +1187,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Edad 31-45
-
             <input
               id="activity-age-31-45"
               type="number"
@@ -1061,7 +1197,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Edad 46 o más
-
             <input
               id="activity-age-46"
               type="number"
@@ -1069,7 +1204,6 @@ function renderActivityForm(editingRow = null) {
               value="0"
             >
           </label>
-
         </div>
 
         <div class="form-section-title">
@@ -1077,10 +1211,8 @@ function renderActivityForm(editingRow = null) {
         </div>
 
         <div class="form-grid">
-
           <label>
             Provincia
-
             <select
               id="activity-province"
               required
@@ -1089,7 +1221,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Cantón
-
             <select
               id="activity-canton"
               required
@@ -1098,7 +1229,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Distrito
-
             <select
               id="activity-district"
               required
@@ -1107,7 +1237,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Tipo de lugar
-
             <input
               id="activity-place-type"
               type="text"
@@ -1116,7 +1245,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Lugar
-
             <input
               id="activity-place"
               type="text"
@@ -1125,17 +1253,14 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Centro educativo
-
             <input
               id="activity-school"
               type="text"
             >
           </label>
-
         </div>
 
         <div class="map-toolbar">
-
           <button
             id="btn-use-gps"
             type="button"
@@ -1167,7 +1292,6 @@ function renderActivityForm(editingRow = null) {
           >
             Topográfico
           </button>
-
         </div>
 
         <div
@@ -1183,10 +1307,8 @@ function renderActivityForm(editingRow = null) {
         </div>
 
         <div class="form-grid">
-
           <label>
             Instituciones
-
             <input
               id="activity-institutions"
               type="text"
@@ -1195,7 +1317,6 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Número de referencia
-
             <input
               id="activity-reference"
               type="text"
@@ -1204,18 +1325,15 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Número de expediente
-
             <input
               id="activity-file"
               type="text"
             >
           </label>
-
         </div>
 
         <label>
           Observaciones
-
           <textarea
             id="activity-observations"
             rows="4"
@@ -1223,7 +1341,6 @@ function renderActivityForm(editingRow = null) {
         </label>
 
         <div class="form-actions">
-
           <button
             type="submit"
             class="btn btn-primary"
@@ -1234,11 +1351,8 @@ function renderActivityForm(editingRow = null) {
                 : "Enviar a revisión regional"
             }
           </button>
-
         </div>
-
       </form>
-
     </article>
   `;
 
@@ -1276,7 +1390,8 @@ function setupActivityForm(editingRow) {
     const options =
       state.activityOptions.filter(
         (item) =>
-          item.programa === program
+          normalize(item.programa) ===
+          normalize(program)
       );
 
     fillSelect(
@@ -1295,62 +1410,50 @@ function setupActivityForm(editingRow) {
     const option =
       getSelectedActivityOption();
 
-    if (!option) {
-      $("activity-progress-card")
-        .innerHTML = "";
+    const card =
+      $("activity-progress-card");
 
+    if (!option) {
+      card.innerHTML = "";
       $("activity-advance")
         .removeAttribute("max");
-
       return;
     }
 
-    $("activity-progress-card")
-      .innerHTML = `
-        <div>
-          <span>Meta</span>
+    card.innerHTML = `
+      <div>
+        <span>Meta</span>
+        <strong>${formatNumber(option.meta)}</strong>
+      </div>
 
-          <strong>
-            ${formatNumber(option.meta)}
-          </strong>
-        </div>
+      <div>
+        <span>Avance validado</span>
+        <strong>
+          ${formatNumber(option.avance_validado)}
+        </strong>
+      </div>
 
-        <div>
-          <span>Avance validado</span>
+      <div>
+        <span>En revisión</span>
+        <strong>
+          ${formatNumber(option.avance_en_revision)}
+        </strong>
+      </div>
 
-          <strong>
-            ${formatNumber(
-              option.avance_validado
-            )}
-          </strong>
-        </div>
-
-        <div>
-          <span>En revisión</span>
-
-          <strong>
-            ${formatNumber(
-              option.avance_en_revision
-            )}
-          </strong>
-        </div>
-
-        <div>
-          <span>Disponible</span>
-
-          <strong>
-            ${formatNumber(
-              option.disponible_registro
-            )}
-          </strong>
-        </div>
-      `;
+      <div>
+        <span>Disponible</span>
+        <strong>
+          ${formatNumber(option.disponible_registro)}
+        </strong>
+      </div>
+    `;
 
     $("activity-advance").max =
       option.disponible_registro;
 
     if (
-      option.disponible_registro <= 0
+      option.disponible_registro <= 0 &&
+      !state.editingObjectId
     ) {
       $("activity-advance").value = "";
       $("activity-advance").disabled = true;
@@ -1370,7 +1473,6 @@ function setupActivityForm(editingRow) {
   );
 
   setupLocationSelectors();
-
   setupFormMap();
 
   $("btn-use-gps").addEventListener(
@@ -1407,23 +1509,63 @@ function setupActivityForm(editingRow) {
 function getSelectedActivityOption() {
   return state.activityOptions.find(
     (item) =>
-      item.programa ===
-        $("activity-program").value &&
-      item.actividad ===
-        $("activity-name").value
+      normalize(item.programa) ===
+        normalize(
+          $("activity-program")?.value
+        ) &&
+      normalize(item.actividad) ===
+        normalize(
+          $("activity-name")?.value
+        )
+  );
+}
+
+function setupLocationSelectors() {
+  const province =
+    $("activity-province");
+
+  const canton =
+    $("activity-canton");
+
+  const district =
+    $("activity-district");
+
+  fillSelect(
+    province,
+    getCatalogValues("PROVINCIA"),
+    false,
+    "Seleccione una provincia"
+  );
+
+  fillSelect(
+    canton,
+    getCatalogValues("CANTON"),
+    false,
+    "Seleccione un cantón"
+  );
+
+  fillSelect(
+    district,
+    getCatalogValues("DISTRITO"),
+    false,
+    "Seleccione un distrito"
   );
 }
 
 function fillActivityForm(row) {
-  $("activity-program").value =
-    row.programa || "";
+  setSelectValue(
+    $("activity-program"),
+    row.programa
+  );
 
   $("activity-program").dispatchEvent(
     new Event("change")
   );
 
-  $("activity-name").value =
-    row.actividad || "";
+  setSelectValue(
+    $("activity-name"),
+    row.actividad
+  );
 
   $("activity-name").dispatchEvent(
     new Event("change")
@@ -1436,7 +1578,6 @@ function fillActivityForm(row) {
     row.hora_actividad || "";
 
   $("activity-advance").disabled = false;
-
   $("activity-advance").value =
     row.avance_realizado || 0;
 
@@ -1537,9 +1678,10 @@ async function submitActivity(event) {
       );
     }
 
-    const quantity = numberValue(
-      $("activity-advance").value
-    );
+    const quantity =
+      numberValue(
+        $("activity-advance").value
+      );
 
     if (quantity <= 0) {
       throw new Error(
@@ -1557,13 +1699,15 @@ async function submitActivity(event) {
       );
     }
 
-    const men = numberValue(
-      $("activity-men").value
-    );
+    const men =
+      numberValue(
+        $("activity-men").value
+      );
 
-    const women = numberValue(
-      $("activity-women").value
-    );
+    const women =
+      numberValue(
+        $("activity-women").value
+      );
 
     const attributes = {
       programa:
@@ -1580,14 +1724,17 @@ async function submitActivity(event) {
       hora_actividad:
         $("activity-time").value,
 
-      avance_realizado: quantity,
+      avance_realizado:
+        quantity,
 
       responsable:
         $("activity-responsible").value,
 
-      cantidad_hombres: men,
+      cantidad_hombres:
+        men,
 
-      cantidad_mujeres: women,
+      cantidad_mujeres:
+        women,
 
       cantidad_participantes:
         men + women,
@@ -1663,12 +1810,15 @@ async function submitActivity(event) {
     } else {
       await api.createActivity(
         attributes,
+
         state.selectedPoint
           ? {
               x:
                 state.selectedPoint.longitude,
+
               y:
                 state.selectedPoint.latitude,
+
               spatialReference: {
                 wkid: 4326
               }
@@ -1690,64 +1840,6 @@ async function submitActivity(event) {
   } catch (error) {
     showToast(error.message, true);
   }
-}
-
-/* =========================================================
-   LOCALIDADES DESDE PUMI_CATALOGOS
-========================================================= */
-
-function setupLocationSelectors() {
-  const province =
-    $("activity-province");
-
-  const canton =
-    $("activity-canton");
-
-  const district =
-    $("activity-district");
-
-  const provinces =
-    getCatalogValues("PROVINCIA");
-
-  const cantons =
-    getCatalogValues("CANTON");
-
-  const districts =
-    getCatalogValues("DISTRITO");
-
-  fillSelect(
-    province,
-    provinces,
-    false,
-    "Seleccione una provincia"
-  );
-
-  fillSelect(
-    canton,
-    cantons,
-    false,
-    "Seleccione un cantón"
-  );
-
-  fillSelect(
-    district,
-    districts,
-    false,
-    "Seleccione un distrito"
-  );
-
-  /*
-   * PUMI_CATALOGOS actualmente tiene:
-   * tipo_catalogo, codigo y descripcion.
-   *
-   * No tiene provincia_padre ni canton_padre.
-   * Por eso el catálogo actual permite cargar correctamente
-   * las tres listas, pero todavía no permite relacionar
-   * técnicamente cada cantón con una provincia ni cada
-   * distrito con un cantón.
-   *
-   * La selección queda funcional y sin listas vacías.
-   */
 }
 
 /* =========================================================
@@ -1868,7 +1960,8 @@ function setSelectedPoint(
 
         symbol: {
           type: "simple-marker",
-          size: 13,
+          style: "diamond",
+          size: 18,
           color: [0, 43, 127],
 
           outline: {
@@ -1892,7 +1985,6 @@ function useGps() {
       "El dispositivo no permite GPS.",
       true
     );
-
     return;
   }
 
@@ -1952,21 +2044,20 @@ function renderMyRecords() {
 
   $("coming-page").innerHTML = `
     <article class="panel-card">
-
       <div class="module-heading">
         <div>
           <span class="panel-kicker">
             Delegación
           </span>
 
-          <h2>Mis registros</h2>
+          <h2>
+            Mis registros
+          </h2>
         </div>
       </div>
 
       <div class="table-scroll">
-
         <table class="data-table">
-
           <thead>
             <tr>
               <th>Fecha</th>
@@ -1979,12 +2070,10 @@ function renderMyRecords() {
           </thead>
 
           <tbody>
-
             ${rows
               .map(
                 (row) => `
                   <tr>
-
                     <td>
                       ${formatDate(
                         row.fecha_actividad
@@ -2019,41 +2108,59 @@ function renderMyRecords() {
 
                     <td>
                       <div class="table-actions">
+                        <button
+                          class="btn btn-secondary btn-small"
+                          data-view-record="${getObjectId(row)}"
+                        >
+                          Ver
+                        </button>
 
                         <button
                           class="btn btn-secondary btn-small"
-                          data-edit-record="${getObjectId(
-                            row
-                          )}"
+                          data-edit-record="${getObjectId(row)}"
                         >
                           Editar
                         </button>
 
                         <button
                           class="btn btn-danger btn-small"
-                          data-delete-record="${getObjectId(
-                            row
-                          )}"
+                          data-delete-record="${getObjectId(row)}"
                         >
                           Eliminar
                         </button>
-
                       </div>
                     </td>
-
                   </tr>
                 `
               )
               .join("")}
-
           </tbody>
-
         </table>
-
       </div>
-
     </article>
   `;
+
+  document
+    .querySelectorAll("[data-view-record]")
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        () => {
+          const objectId = Number(
+            button.dataset.viewRecord
+          );
+
+          const row = rows.find(
+            (item) =>
+              getObjectId(item) === objectId
+          );
+
+          if (row) {
+            openActivityDetail(row);
+          }
+        }
+      );
+    });
 
   document
     .querySelectorAll("[data-edit-record]")
@@ -2078,9 +2185,7 @@ function renderMyRecords() {
     });
 
   document
-    .querySelectorAll(
-      "[data-delete-record]"
-    )
+    .querySelectorAll("[data-delete-record]")
     .forEach((button) => {
       button.addEventListener(
         "click",
@@ -2089,12 +2194,11 @@ function renderMyRecords() {
             button.dataset.deleteRecord
           );
 
-          const confirmed =
-            window.confirm(
+          if (
+            !window.confirm(
               "¿Desea eliminar este registro?"
-            );
-
-          if (!confirmed) {
+            )
+          ) {
             return;
           }
 
@@ -2104,7 +2208,6 @@ function renderMyRecords() {
             );
 
             await loadData();
-
             renderMyRecords();
 
             showToast(
@@ -2121,28 +2224,295 @@ function renderMyRecords() {
     });
 }
 
+function openActivityDetail(row) {
+  $("coming-page").innerHTML = `
+    <article class="panel-card">
+      <div class="module-heading">
+        <div>
+          <span class="panel-kicker">
+            Detalle del registro
+          </span>
+
+          <h2>
+            ${escapeHtml(
+              row.delegacion ||
+              "Actividad"
+            )}
+          </h2>
+        </div>
+
+        <button
+          id="btn-detail-back"
+          class="btn btn-secondary"
+          type="button"
+        >
+          ← Volver
+        </button>
+      </div>
+
+      ${renderActivityDataSections(row)}
+    </article>
+  `;
+
+  $("btn-detail-back").addEventListener(
+    "click",
+    renderMyRecords
+  );
+}
+
+function renderActivityDataSections(row) {
+  return `
+    ${buildDetailSection(
+      "Actividad",
+      [
+        ["Programa", row.programa],
+        ["Actividad", row.actividad],
+        [
+          "Fecha",
+          formatDate(
+            row.fecha_actividad
+          )
+        ],
+        ["Hora", row.hora_actividad],
+        [
+          "Avance realizado",
+          formatNumber(
+            row.avance_realizado
+          )
+        ],
+        ["Responsable", row.responsable]
+      ]
+    )}
+
+    ${buildDetailSection(
+      "Participantes",
+      [
+        [
+          "Total",
+          formatNumber(
+            row.cantidad_participantes
+          )
+        ],
+        [
+          "Hombres",
+          formatNumber(
+            row.cantidad_hombres
+          )
+        ],
+        [
+          "Mujeres",
+          formatNumber(
+            row.cantidad_mujeres
+          )
+        ],
+        [
+          "Edad 10-18",
+          formatNumber(
+            row.edad_10_18
+          )
+        ],
+        [
+          "Edad 19-30",
+          formatNumber(
+            row.edad_19_30
+          )
+        ],
+        [
+          "Edad 31-45",
+          formatNumber(
+            row.edad_31_45
+          )
+        ],
+        [
+          "Edad 46 o más",
+          formatNumber(
+            row.edad_46_mas
+          )
+        ]
+      ]
+    )}
+
+    ${buildDetailSection(
+      "Ubicación",
+      [
+        ["Provincia", row.provincia],
+        ["Cantón", row.canton],
+        ["Distrito", row.distrito],
+        ["Tipo de lugar", row.tipo_lugar],
+        ["Lugar", row.lugar],
+        [
+          "Centro educativo",
+          row.centro_educativo
+        ]
+      ]
+    )}
+
+    ${buildDetailSection(
+      "Información complementaria",
+      [
+        ["Instituciones", row.instituciones],
+        [
+          "Número de referencia",
+          row.numero_referencia
+        ],
+        [
+          "Número de expediente",
+          row.numero_expediente
+        ],
+        ["Observaciones", row.observaciones]
+      ]
+    )}
+
+    ${
+      row.observacion_regional
+        ? buildDetailSection(
+            "Valoración Regional",
+            [
+              [
+                "Coordinador Regional",
+                row.coordinador_regional
+              ],
+              [
+                "Fecha de revisión",
+                formatDateTime(
+                  row.fecha_revision_regional
+                )
+              ],
+              [
+                "Observación Regional",
+                row.observacion_regional
+              ]
+            ]
+          )
+        : ""
+    }
+
+    ${
+      row.observacion_nacional
+        ? buildDetailSection(
+            "Valoración Nacional",
+            [
+              [
+                "Coordinador Nacional",
+                row.coordinador_nacional
+              ],
+              [
+                "Fecha de revisión",
+                formatDateTime(
+                  row.fecha_revision_nacional
+                )
+              ],
+              [
+                "Observación Nacional",
+                row.observacion_nacional
+              ]
+            ]
+          )
+        : ""
+    }
+  `;
+}
+
+function buildDetailSection(
+  title,
+  fields
+) {
+  return `
+    <section class="record-detail-section">
+      <div class="form-section-title">
+        ${escapeHtml(title)}
+      </div>
+
+      <div class="record-detail-grid">
+        ${fields
+          .map(
+            ([label, value]) => `
+              <div class="record-detail-item">
+                <span>
+                  ${escapeHtml(label)}
+                </span>
+
+                <strong>
+                  ${escapeHtml(
+                    value === null ||
+                    value === undefined ||
+                    String(value).trim() === ""
+                      ? "Sin dato"
+                      : value
+                  )}
+                </strong>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 /* =========================================================
-   MÓDULO REGIONAL
+   REVISIÓN REGIONAL / NACIONAL
 ========================================================= */
 
-function renderRegionalModule() {
-  const role = normalize(
-    state.user?.role
-  );
+function renderReviewModule() {
+  const role = getCurrentRole();
 
   if (
-    !role.includes("REGIONAL") &&
-    !role.includes("ADMIN")
+    role.includes("REGIONAL") ||
+    role.includes("ADMIN")
   ) {
-    renderComing(
-      "Revisión y validación"
+    state.currentReviewLevel = "REGIONAL";
+
+    renderReviewQueue(
+      state.regionalQueue,
+      "Dirección Regional",
+      "Revisión de actividades"
     );
 
     return;
   }
 
-  const rows = getRows().filter(
-    (row) => !isHistorical(row)
+  if (
+    role.includes("COORDIN") ||
+    role === "NACIONAL"
+  ) {
+    state.currentReviewLevel = "NACIONAL";
+
+    renderReviewQueue(
+      state.nationalQueue,
+      "Coordinación Nacional",
+      "Validación de actividades"
+    );
+
+    return;
+  }
+
+  renderComing(
+    "Revisión y validación"
+  );
+}
+
+function renderReviewQueue(
+  queue,
+  kicker,
+  title
+) {
+  const features =
+    queue?.features || [];
+
+  const rows = features.map(
+    (feature) => ({
+      ...(feature.attributes || {}),
+
+      __geometry:
+        feature.geometry || null,
+
+      __workflow:
+        feature.workflow_status ||
+        workflowLabel(
+          feature.attributes || {}
+        )
+    })
   );
 
   const delegations = [
@@ -2165,388 +2535,566 @@ function renderRegionalModule() {
     a.localeCompare(b, "es")
   );
 
+  const activities = [
+    ...new Set(
+      rows
+        .map((row) => row.actividad)
+        .filter(Boolean)
+    )
+  ].sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
+
   $("coming-page").innerHTML = `
     <article class="panel-card">
-
       <div class="module-heading">
         <div>
           <span class="panel-kicker">
-            Dirección Regional
+            ${escapeHtml(kicker)}
           </span>
 
           <h2>
-            Revisión de actividades
+            ${escapeHtml(title)}
           </h2>
+
+          ${
+            queue?.program
+              ? `
+                  <p class="page-scope">
+                    Programa:
+                    ${escapeHtml(queue.program)}
+                  </p>
+                `
+              : ""
+          }
+        </div>
+
+        <div class="review-counter">
+          <span>Pendientes</span>
+
+          <strong>
+            ${formatNumber(
+              queue?.pending_count || 0
+            )}
+          </strong>
         </div>
       </div>
 
       <div class="filter-grid">
-
         <label>
           Delegación
-
           <select
-            id="regional-filter-delegation"
+            id="review-filter-delegation"
           ></select>
         </label>
 
         <label>
           Programa
-
           <select
-            id="regional-filter-program"
+            id="review-filter-program"
+          ></select>
+        </label>
+
+        <label>
+          Actividad
+          <select
+            id="review-filter-activity"
           ></select>
         </label>
 
         <label>
           Estado
-
           <select
-            id="regional-filter-status"
+            id="review-filter-status"
           >
             <option value="">
               Todos
             </option>
 
-            <option value="Pendiente regional">
-              Pendiente regional
-            </option>
-
-            <option value="Pendiente nacional">
-              Pendiente nacional
-            </option>
-
-            <option value="Devuelto regional">
-              Devuelto regional
-            </option>
-
-            <option value="Validado nacional">
-              Validado nacional
-            </option>
+            ${[
+              ...new Set(
+                rows.map(
+                  (row) =>
+                    row.__workflow
+                )
+              )
+            ]
+              .sort()
+              .map(
+                (status) => `
+                  <option
+                    value="${escapeHtml(status)}"
+                  >
+                    ${escapeHtml(status)}
+                  </option>
+                `
+              )
+              .join("")}
           </select>
         </label>
-
       </div>
 
-      <div id="regional-records"></div>
-
+      <div id="review-records"></div>
     </article>
   `;
 
   fillSelect(
-    $("regional-filter-delegation"),
+    $("review-filter-delegation"),
     delegations,
     true
   );
 
   fillSelect(
-    $("regional-filter-program"),
+    $("review-filter-program"),
     programs,
     true
   );
 
-  const render = () =>
-    renderRegionalRecords(rows);
+  fillSelect(
+    $("review-filter-activity"),
+    activities,
+    true
+  );
 
-  $("regional-filter-delegation")
-    .addEventListener(
+  const render =
+    () =>
+      renderReviewRecords(rows);
+
+  [
+    "review-filter-delegation",
+    "review-filter-program",
+    "review-filter-activity",
+    "review-filter-status"
+  ].forEach((id) => {
+    $(id)?.addEventListener(
       "change",
       render
     );
-
-  $("regional-filter-program")
-    .addEventListener(
-      "change",
-      render
-    );
-
-  $("regional-filter-status")
-    .addEventListener(
-      "change",
-      render
-    );
+  });
 
   render();
 }
 
-function renderRegionalRecords(sourceRows) {
+function renderReviewRecords(sourceRows) {
   const delegation =
-    $("regional-filter-delegation").value;
+    $("review-filter-delegation")
+      ?.value || "";
 
   const program =
-    $("regional-filter-program").value;
+    $("review-filter-program")
+      ?.value || "";
+
+  const activity =
+    $("review-filter-activity")
+      ?.value || "";
 
   const status =
-    $("regional-filter-status").value;
+    $("review-filter-status")
+      ?.value || "";
 
-  const rows = sourceRows.filter((row) => {
-    if (
-      delegation &&
-      row.delegacion !== delegation
-    ) {
-      return false;
+  const rows = sourceRows.filter(
+    (row) => {
+      if (
+        delegation &&
+        row.delegacion !== delegation
+      ) {
+        return false;
+      }
+
+      if (
+        program &&
+        row.programa !== program
+      ) {
+        return false;
+      }
+
+      if (
+        activity &&
+        row.actividad !== activity
+      ) {
+        return false;
+      }
+
+      if (
+        status &&
+        row.__workflow !== status
+      ) {
+        return false;
+      }
+
+      return true;
     }
+  );
 
-    if (
-      program &&
-      row.programa !== program
-    ) {
-      return false;
-    }
-
-    if (
-      status &&
-      workflowLabel(row) !== status
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-
-  $("regional-records").innerHTML =
+  $("review-records").innerHTML =
     rows.length
-      ? rows
-          .map(
-            (row) => `
-              <article class="review-card">
+      ? `
+          <div class="review-list">
+            ${rows
+              .map(
+                (row) => `
+                  <article class="review-compact-card">
+                    <div>
+                      <span class="status-badge">
+                        ${escapeHtml(
+                          row.__workflow
+                        )}
+                      </span>
 
-                <div class="review-card-header">
+                      <h3>
+                        ${escapeHtml(
+                          row.delegacion
+                        )}
+                      </h3>
 
-                  <div>
+                      <p>
+                        ${escapeHtml(
+                          row.programa
+                        )}
+                      </p>
 
-                    <span class="status-badge">
-                      ${escapeHtml(
-                        workflowLabel(row)
-                      )}
-                    </span>
+                      <strong>
+                        ${escapeHtml(
+                          row.actividad
+                        )}
+                      </strong>
+                    </div>
 
-                    <h3>
-                      ${escapeHtml(
-                        row.delegacion
-                      )}
-                    </h3>
+                    <div class="review-compact-meta">
+                      <span>
+                        Fecha:
+                        <strong>
+                          ${formatDate(
+                            row.fecha_actividad
+                          )}
+                        </strong>
+                      </span>
 
-                    <p>
-                      ${escapeHtml(
-                        row.programa
-                      )}
-                    </p>
+                      <span>
+                        Avance reportado:
+                        <strong>
+                          ${formatNumber(
+                            row.avance_realizado
+                          )}
+                        </strong>
+                      </span>
 
-                  </div>
-
-                  <strong>
-                    Avance:
-                    ${formatNumber(
-                      row.avance_realizado
-                    )}
-                  </strong>
-
-                </div>
-
-                <div class="review-detail">
-
-                  <strong>Actividad</strong>
-
-                  <p>
-                    ${escapeHtml(
-                      row.actividad
-                    )}
-                  </p>
-
-                  <strong>Fecha</strong>
-
-                  <p>
-                    ${formatDate(
-                      row.fecha_actividad
-                    )}
-                  </p>
-
-                  <strong>Responsable</strong>
-
-                  <p>
-                    ${escapeHtml(
-                      row.responsable
-                    )}
-                  </p>
-
-                  <strong>Participantes</strong>
-
-                  <p>
-                    ${formatNumber(
-                      row.cantidad_participantes
-                    )}
-                  </p>
-
-                  <strong>Ubicación</strong>
-
-                  <p>
-                    ${escapeHtml(
-                      [
-                        row.provincia,
-                        row.canton,
-                        row.distrito,
-                        row.lugar
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")
-                    )}
-                  </p>
-
-                  <strong>Observaciones</strong>
-
-                  <p>
-                    ${escapeHtml(
-                      row.observaciones ||
-                      "Sin observaciones"
-                    )}
-                  </p>
-
-                </div>
-
-                <div class="review-actions">
-
-                  <button
-                    class="btn btn-primary"
-                    data-regional-approve="${getObjectId(
-                      row
-                    )}"
-                  >
-                    ✅ Revisar y enviar
-                  </button>
-
-                  <button
-                    class="btn btn-warning"
-                    data-regional-return="${getObjectId(
-                      row
-                    )}"
-                  >
-                    ↩️ Devolver
-                  </button>
-
-                  <button
-                    class="btn btn-secondary"
-                    data-regional-edit="${getObjectId(
-                      row
-                    )}"
-                  >
-                    ✏️ Editar
-                  </button>
-
-                  <button
-                    class="btn btn-danger"
-                    data-regional-delete="${getObjectId(
-                      row
-                    )}"
-                  >
-                    🗑️ Eliminar
-                  </button>
-
-                </div>
-
-              </article>
-            `
-          )
-          .join("")
+                      <button
+                        class="btn btn-primary"
+                        data-open-review="${getObjectId(row)}"
+                      >
+                        🔎 Revisar actividad
+                      </button>
+                    </div>
+                  </article>
+                `
+              )
+              .join("")}
+          </div>
+        `
       : `
           <div class="module-empty">
             No hay registros para los filtros seleccionados.
           </div>
         `;
 
-  bindRegionalActions(sourceRows);
-}
-
-function bindRegionalActions(sourceRows) {
   document
-    .querySelectorAll(
-      "[data-regional-approve]"
-    )
+    .querySelectorAll("[data-open-review]")
     .forEach((button) => {
       button.addEventListener(
         "click",
         async () => {
-          const observations =
-            window.prompt(
-              "Observaciones regionales:",
-              ""
-            ) || "";
-
-          await performRegionalReview(
+          await openReviewDetail(
             Number(
-              button.dataset.regionalApprove
-            ),
+              button.dataset.openReview
+            )
+          );
+        }
+      );
+    });
+}
+
+async function openReviewDetail(objectId) {
+  try {
+    const result =
+      await api.getActivityDetail(
+        objectId
+      );
+
+    const feature =
+      result.feature || {};
+
+    const row =
+      feature.attributes || {};
+
+    const progress =
+      feature.progress || {};
+
+    $("coming-page").innerHTML = `
+      <article class="review-detail-page">
+        <div class="review-detail-topbar">
+          <button
+            id="btn-back-review"
+            class="btn btn-secondary"
+          >
+            ← Volver a la bandeja
+          </button>
+
+          <span class="status-badge">
+            ${escapeHtml(
+              feature.workflow_status ||
+              workflowLabel(row)
+            )}
+          </span>
+        </div>
+
+        <article class="panel-card">
+          <div class="module-heading">
+            <div>
+              <span class="panel-kicker">
+                ${
+                  state.currentReviewLevel === "REGIONAL"
+                    ? "Revisión Regional"
+                    : "Validación Nacional"
+                }
+              </span>
+
+              <h2>
+                ${escapeHtml(
+                  row.delegacion
+                )}
+              </h2>
+
+              <p class="page-scope">
+                ${escapeHtml(
+                  row.direccion_regional
+                )}
+              </p>
+            </div>
+
+            <div class="review-counter">
+              <span>Avance reportado</span>
+
+              <strong>
+                ${formatNumber(
+                  row.avance_realizado
+                )}
+              </strong>
+            </div>
+          </div>
+
+          <div class="progress-info-card">
+            <div>
+              <span>Meta</span>
+
+              <strong>
+                ${formatNumber(
+                  progress.meta
+                )}
+              </strong>
+            </div>
+
+            <div>
+              <span>Avance validado</span>
+
+              <strong>
+                ${formatNumber(
+                  progress.avance_validado
+                )}
+              </strong>
+            </div>
+
+            <div>
+              <span>En revisión</span>
+
+              <strong>
+                ${formatNumber(
+                  progress.avance_en_revision
+                )}
+              </strong>
+            </div>
+
+            <div>
+              <span>Pendiente</span>
+
+              <strong>
+                ${formatNumber(
+                  progress.pendiente_real
+                )}
+              </strong>
+            </div>
+          </div>
+
+          ${renderActivityDataSections(row)}
+
+          <div class="form-section-title">
+            Ubicación registrada
+          </div>
+
+          <div
+            id="review-map"
+            class="form-map"
+          ></div>
+
+          <div class="form-section-title">
+            Valoración
+          </div>
+
+          <label class="review-observation-field">
+            Observaciones de revisión
+
+            <textarea
+              id="review-observations"
+              rows="5"
+              placeholder="Digite observaciones, recomendaciones o motivos de devolución..."
+            ></textarea>
+          </label>
+
+          <div class="review-actions review-actions-large">
+            ${
+              state.currentReviewLevel === "REGIONAL"
+                ? `
+                    <button
+                      id="btn-review-approve"
+                      class="btn btn-primary"
+                    >
+                      ✅ Revisar y enviar a Coordinación Nacional
+                    </button>
+
+                    <button
+                      id="btn-review-return"
+                      class="btn btn-warning"
+                    >
+                      ↩️ Devolver a Delegación
+                    </button>
+
+                    <button
+                      id="btn-review-edit"
+                      class="btn btn-secondary"
+                    >
+                      ✏️ Editar registro
+                    </button>
+
+                    <button
+                      id="btn-review-delete"
+                      class="btn btn-danger"
+                    >
+                      🗑️ Eliminar registro
+                    </button>
+                  `
+                : `
+                    <button
+                      id="btn-review-approve"
+                      class="btn btn-primary"
+                    >
+                      ✅ Validar nacionalmente
+                    </button>
+
+                    <button
+                      id="btn-review-return"
+                      class="btn btn-warning"
+                    >
+                      ↩️ Observar registro
+                    </button>
+                  `
+            }
+          </div>
+        </article>
+      </article>
+    `;
+
+    $("btn-back-review").addEventListener(
+      "click",
+      renderReviewModule
+    );
+
+    renderReviewMap(row);
+
+    $("btn-review-approve").addEventListener(
+      "click",
+      async () => {
+        const observations =
+          $("review-observations")
+            .value
+            .trim();
+
+        if (
+          state.currentReviewLevel ===
+          "REGIONAL"
+        ) {
+          await performRegionalReview(
+            objectId,
             "Revisado regional",
             observations
           );
-        }
-      );
-    });
-
-  document
-    .querySelectorAll(
-      "[data-regional-return]"
-    )
-    .forEach((button) => {
-      button.addEventListener(
-        "click",
-        async () => {
-          const observations =
-            window.prompt(
-              "Indique la observación para devolver el registro:"
-            );
-
-          if (!observations) {
-            return;
-          }
-
-          await performRegionalReview(
-            Number(
-              button.dataset.regionalReturn
-            ),
-            "Devuelto regional",
+        } else {
+          await performNationalReview(
+            objectId,
+            "Validado nacional",
             observations
           );
         }
-      );
-    });
+      }
+    );
 
-  document
-    .querySelectorAll(
-      "[data-regional-edit]"
-    )
-    .forEach((button) => {
-      button.addEventListener(
+    $("btn-review-return").addEventListener(
+      "click",
+      async () => {
+        const observations =
+          $("review-observations")
+            .value
+            .trim();
+
+        if (!observations) {
+          showToast(
+            "Debe indicar una observación para devolver u observar el registro.",
+            true
+          );
+
+          return;
+        }
+
+        if (
+          state.currentReviewLevel ===
+          "REGIONAL"
+        ) {
+          await performRegionalReview(
+            objectId,
+            "Devuelto regional",
+            observations
+          );
+        } else {
+          await performNationalReview(
+            objectId,
+            "Observado nacional",
+            observations
+          );
+        }
+      }
+    );
+
+    if ($("btn-review-edit")) {
+      $("btn-review-edit").addEventListener(
         "click",
         () => {
-          const objectId = Number(
-            button.dataset.regionalEdit
-          );
+          const localRow =
+            getRows().find(
+              (item) =>
+                getObjectId(item) ===
+                objectId
+            );
 
-          const row = sourceRows.find(
-            (item) =>
-              getObjectId(item) === objectId
-          );
-
-          if (row) {
-            regionalQuickEdit(row);
+          if (localRow) {
+            renderActivityForm(localRow);
           }
         }
       );
-    });
+    }
 
-  document
-    .querySelectorAll(
-      "[data-regional-delete]"
-    )
-    .forEach((button) => {
-      button.addEventListener(
+    if ($("btn-review-delete")) {
+      $("btn-review-delete").addEventListener(
         "click",
         async () => {
-          const objectId = Number(
-            button.dataset.regionalDelete
-          );
-
           if (
             !window.confirm(
               "¿Eliminar definitivamente este registro?"
@@ -2561,8 +3109,7 @@ function bindRegionalActions(sourceRows) {
             );
 
             await loadData();
-
-            renderRegionalModule();
+            renderReviewModule();
 
             showToast(
               "Registro eliminado."
@@ -2575,7 +3122,10 @@ function bindRegionalActions(sourceRows) {
           }
         }
       );
-    });
+    }
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 async function performRegionalReview(
@@ -2591,8 +3141,7 @@ async function performRegionalReview(
     );
 
     await loadData();
-
-    renderRegionalModule();
+    renderReviewModule();
 
     showToast(
       status === "Revisado regional"
@@ -2604,56 +3153,25 @@ async function performRegionalReview(
   }
 }
 
-async function regionalQuickEdit(row) {
-  const responsible =
-    window.prompt(
-      "Responsable:",
-      row.responsable || ""
-    );
-
-  if (responsible === null) {
-    return;
-  }
-
-  const participants =
-    window.prompt(
-      "Cantidad de participantes:",
-      row.cantidad_participantes || 0
-    );
-
-  if (participants === null) {
-    return;
-  }
-
-  const observations =
-    window.prompt(
-      "Observaciones:",
-      row.observaciones || ""
-    );
-
-  if (observations === null) {
-    return;
-  }
-
+async function performNationalReview(
+  objectId,
+  status,
+  observations
+) {
   try {
-    await api.updateActivity(
-      getObjectId(row),
-      {
-        responsable: responsible,
-
-        cantidad_participantes:
-          numberValue(participants),
-
-        observaciones: observations
-      }
+    await api.nationalReview(
+      objectId,
+      status,
+      observations
     );
 
     await loadData();
-
-    renderRegionalModule();
+    renderReviewModule();
 
     showToast(
-      "Registro actualizado."
+      status === "Validado nacional"
+        ? "Actividad validada nacionalmente."
+        : "Actividad observada nacionalmente."
     );
   } catch (error) {
     showToast(error.message, true);
@@ -2665,31 +3183,39 @@ async function regionalQuickEdit(row) {
 ========================================================= */
 
 function createDerivedNotifications() {
-  const role = normalize(
-    state.user?.role
-  );
-
-  const rows = getRows();
-
+  const role = getCurrentRole();
   const notes = [];
 
-  if (role.includes("REGIONAL")) {
+  if (
+    role.includes("REGIONAL") &&
+    state.regionalQueue
+  ) {
     const grouped = {};
 
-    rows
-      .filter(
-        (row) =>
-          !isHistorical(row) &&
-          workflowLabel(row) ===
-            "Pendiente regional"
-      )
-      .forEach((row) => {
-        const delegation =
-          row.delegacion || "Delegación";
+    for (
+      const feature
+      of state.regionalQueue.features || []
+    ) {
+      const row =
+        feature.attributes || {};
 
-        grouped[delegation] =
-          (grouped[delegation] || 0) + 1;
-      });
+      const status =
+        feature.workflow_status ||
+        workflowLabel(row);
+
+      if (
+        status !== "Pendiente regional"
+      ) {
+        continue;
+      }
+
+      const delegation =
+        row.delegacion ||
+        "Delegación";
+
+      grouped[delegation] =
+        (grouped[delegation] || 0) + 1;
+    }
 
     for (
       const [delegation, count]
@@ -2697,19 +3223,70 @@ function createDerivedNotifications() {
     ) {
       notes.push({
         message:
-          `${delegation} registró ${count} actividad(es) pendiente(s) de revisión.`,
+          `${delegation} tiene ${count} actividad(es) pendiente(s) de revisión regional.`,
 
-        date: Date.now()
+        date:
+          Date.now()
+      });
+    }
+  }
+
+  if (
+    (
+      role.includes("COORDIN") ||
+      role === "NACIONAL"
+    ) &&
+    state.nationalQueue
+  ) {
+    const grouped = {};
+
+    for (
+      const feature
+      of state.nationalQueue.features || []
+    ) {
+      const row =
+        feature.attributes || {};
+
+      const status =
+        feature.workflow_status ||
+        workflowLabel(row);
+
+      if (
+        status !== "Pendiente nacional"
+      ) {
+        continue;
+      }
+
+      const delegation =
+        row.delegacion ||
+        "Delegación";
+
+      grouped[delegation] =
+        (grouped[delegation] || 0) + 1;
+    }
+
+    for (
+      const [delegation, count]
+      of Object.entries(grouped)
+    ) {
+      notes.push({
+        message:
+          `${delegation} tiene ${count} actividad(es) pendiente(s) de validación nacional.`,
+
+        date:
+          Date.now()
       });
     }
   }
 
   if (role.includes("DELEG")) {
-    rows
+    getRows()
       .filter(
         (row) =>
           !isHistorical(row) &&
-          normalize(row.usuario_registra) ===
+          normalize(
+            row.usuario_registra
+          ) ===
             normalize(
               state.user?.username
             ) &&
@@ -2719,7 +3296,9 @@ function createDerivedNotifications() {
             workflowLabel(row) ===
               "Pendiente nacional" ||
             workflowLabel(row) ===
-              "Validado nacional"
+              "Validado nacional" ||
+            workflowLabel(row) ===
+              "Observado nacional"
           )
       )
       .slice(0, 10)
@@ -2758,7 +3337,6 @@ function renderNotifications() {
           .map(
             (item) => `
               <article class="notification-item">
-
                 <strong>
                   ${escapeHtml(
                     item.message
@@ -2772,7 +3350,6 @@ function renderNotifications() {
                     "es-CR"
                   )}
                 </small>
-
               </article>
             `
           )
@@ -2801,10 +3378,10 @@ function closeNotifications() {
 }
 
 /* =========================================================
-   MAPA DASHBOARD CORREGIDO
+   MAPAS
 ========================================================= */
 
-function renderMap() {
+function renderMap(features) {
   const container =
     $("dashboard-map");
 
@@ -2840,9 +3417,14 @@ function renderMap() {
 
       map.add(layer);
 
+      const delegationColors =
+        buildDelegationColorMap(
+          features
+        );
+
       for (
         const feature
-        of state.actividades
+        of features
       ) {
         const attributes =
           feature.attributes || {};
@@ -2859,12 +3441,7 @@ function renderMap() {
 
         if (
           latitude === null ||
-          longitude === null
-        ) {
-          continue;
-        }
-
-        if (
+          longitude === null ||
           latitude < -90 ||
           latitude > 90 ||
           longitude < -180 ||
@@ -2873,12 +3450,20 @@ function renderMap() {
           continue;
         }
 
+        const color =
+          delegationColors.get(
+            normalize(
+              attributes.delegacion
+            )
+          ) || [0, 43, 127];
+
         layer.add(
           new Graphic({
             geometry: {
               type: "point",
               longitude,
               latitude,
+
               spatialReference: {
                 wkid: 4326
               }
@@ -2886,36 +3471,55 @@ function renderMap() {
 
             symbol: {
               type: "simple-marker",
-              size: 10,
-              color: [0, 43, 127],
+              style: "diamond",
+              size: 18,
+              color,
 
               outline: {
-                color: [255, 255, 255],
-                width: 1
+                color: [
+                  255,
+                  255,
+                  255
+                ],
+
+                width: 2
               }
             },
 
             attributes,
 
             popupTemplate: {
-              title: "{delegacion}",
+              title:
+                "{delegacion}",
 
               content:
                 "<b>Programa:</b> {programa}<br>" +
                 "<b>Actividad:</b> {actividad}<br>" +
-                "<b>Avance realizado:</b> {avance_realizado}<br>" +
+                "<b>Responsable:</b> {responsable}<br>" +
+                "<b>Participantes:</b> {cantidad_participantes}<br>" +
+                "<b>Estado regional:</b> {estado_regional}<br>" +
+                "<b>Estado nacional:</b> {estado_nacional}<br>" +
                 "<b>Lugar:</b> {lugar}"
             }
           })
         );
       }
 
-      state.mapView = new MapView({
-        container: "dashboard-map",
-        map,
-        center: [-84.1, 9.95],
-        zoom: 7
-      });
+      state.mapView =
+        new MapView({
+          container:
+            "dashboard-map",
+
+          map,
+
+          center: [
+            -84.1,
+            9.95
+          ],
+
+          zoom:
+            7
+        });
 
       if (layer.graphics.length) {
         state.mapView
@@ -2923,14 +3527,267 @@ function renderMap() {
             state.mapView.goTo(
               layer.graphics,
               {
-                padding: 60
+                padding:
+                  60
               }
             )
           )
           .catch(() => {});
       }
+
+      renderMapLegend(
+        delegationColors
+      );
     }
   );
+}
+
+function renderReviewMap(row) {
+  if (state.reviewMapView) {
+    state.reviewMapView.destroy();
+    state.reviewMapView = null;
+  }
+
+  require(
+    [
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/Graphic"
+    ],
+    (
+      Map,
+      MapView,
+      Graphic
+    ) => {
+      const latitude =
+        numberOrNull(
+          row.latitud
+        );
+
+      const longitude =
+        numberOrNull(
+          row.longitud
+        );
+
+      const map = new Map({
+        basemap:
+          "streets-navigation-vector"
+      });
+
+      state.reviewMapView =
+        new MapView({
+          container:
+            "review-map",
+
+          map,
+
+          center:
+            latitude !== null &&
+            longitude !== null
+              ? [
+                  longitude,
+                  latitude
+                ]
+              : [
+                  -84.1,
+                  9.95
+                ],
+
+          zoom:
+            latitude !== null &&
+            longitude !== null
+              ? 16
+              : 7
+        });
+
+      if (
+        latitude !== null &&
+        longitude !== null
+      ) {
+        state.reviewMapView.graphics.add(
+          new Graphic({
+            geometry: {
+              type: "point",
+              longitude,
+              latitude,
+
+              spatialReference: {
+                wkid: 4326
+              }
+            },
+
+            symbol: {
+              type: "simple-marker",
+              style: "diamond",
+              size: 22,
+              color: [
+                0,
+                43,
+                127
+              ],
+
+              outline: {
+                color: [
+                  255,
+                  255,
+                  255
+                ],
+
+                width: 2
+              }
+            }
+          })
+        );
+      }
+    }
+  );
+}
+
+function buildDelegationColorMap(features) {
+  const delegations = [
+    ...new Set(
+      features
+        .map(
+          (feature) =>
+            feature.attributes?.delegacion
+        )
+        .filter(Boolean)
+    )
+  ].sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
+
+  const palette = [
+    [0, 43, 127],
+    [180, 35, 24],
+    [24, 122, 74],
+    [198, 150, 39],
+    [105, 65, 198],
+    [0, 126, 167],
+    [199, 86, 0],
+    [121, 85, 72],
+    [194, 24, 91],
+    [67, 91, 47],
+    [76, 70, 152],
+    [0, 111, 107],
+    [139, 45, 90],
+    [84, 110, 122],
+    [145, 79, 0],
+    [37, 80, 145]
+  ];
+
+  return new Map(
+    delegations.map(
+      (
+        delegation,
+        index
+      ) => [
+        normalize(delegation),
+
+        palette[
+          index %
+          palette.length
+        ]
+      ]
+    )
+  );
+}
+
+function renderMapLegend(colorMap) {
+  let legend =
+    $("dashboard-map-legend");
+
+  if (!legend) {
+    legend =
+      document.createElement(
+        "div"
+      );
+
+    legend.id =
+      "dashboard-map-legend";
+
+    legend.className =
+      "map-legend";
+
+    $("dashboard-map")
+      ?.insertAdjacentElement(
+        "afterend",
+        legend
+      );
+  }
+
+  if (
+    !legend ||
+    isDelegationRole() ||
+    colorMap.size <= 1
+  ) {
+    legend?.classList.add(
+      "hidden"
+    );
+
+    return;
+  }
+
+  legend.classList.remove(
+    "hidden"
+  );
+
+  legend.innerHTML = `
+    <strong>
+      Delegaciones
+    </strong>
+
+    <div class="map-legend-items">
+      ${[
+        ...colorMap.entries()
+      ]
+        .map(
+          (
+            [
+              delegationKey,
+              color
+            ]
+          ) => {
+            const delegation =
+              (
+                state.dashboard
+                  ?.delegations ||
+                []
+              ).find(
+                (item) =>
+                  normalize(
+                    item.delegacion
+                  ) ===
+                  delegationKey
+              )?.delegacion ||
+              getRows().find(
+                (row) =>
+                  normalize(
+                    row.delegacion
+                  ) ===
+                  delegationKey
+              )?.delegacion ||
+              delegationKey;
+
+            return `
+              <span class="map-legend-item">
+                <i
+                  style="
+                    background:
+                    rgb(${color.join(",")})
+                  "
+                ></i>
+
+                ${escapeHtml(
+                  delegation
+                )}
+              </span>
+            `;
+          }
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 /* =========================================================
@@ -2938,9 +3795,10 @@ function renderMap() {
 ========================================================= */
 
 function isNationalApproved(row) {
-  const status = normalize(
-    row.estado_nacional
-  );
+  const status =
+    normalize(
+      row.estado_nacional
+    );
 
   return (
     status.includes("VALIDAD") ||
@@ -2968,8 +3826,14 @@ function fillSelect(
     `;
   } else if (placeholder) {
     html += `
-      <option value="" selected disabled>
-        ${escapeHtml(placeholder)}
+      <option
+        value=""
+        selected
+        disabled
+      >
+        ${escapeHtml(
+          placeholder
+        )}
       </option>
     `;
   }
@@ -2979,7 +3843,9 @@ function fillSelect(
       values
         .map(
           (value) =>
-            String(value || "").trim()
+            String(
+              value || ""
+            ).trim()
         )
         .filter(Boolean)
     )
@@ -2987,9 +3853,14 @@ function fillSelect(
     a.localeCompare(b, "es")
   );
 
-  for (const value of uniqueValues) {
+  for (
+    const value
+    of uniqueValues
+  ) {
     html += `
-      <option value="${escapeHtml(value)}">
+      <option
+        value="${escapeHtml(value)}"
+      >
         ${escapeHtml(value)}
       </option>
     `;
@@ -3021,7 +3892,9 @@ function setSelectValue(
     select.insertAdjacentHTML(
       "beforeend",
       `
-        <option value="${escapeHtml(target)}">
+        <option
+          value="${escapeHtml(target)}"
+        >
           ${escapeHtml(target)}
         </option>
       `
@@ -3053,9 +3926,12 @@ function normalize(value) {
 }
 
 function numberValue(value) {
-  const parsed = Number(value);
+  const parsed =
+    Number(value);
 
-  return Number.isFinite(parsed)
+  return Number.isFinite(
+    parsed
+  )
     ? parsed
     : 0;
 }
@@ -3080,17 +3956,27 @@ function numberOrNull(value) {
     : null;
 }
 
-function sumBy(rows, field) {
+function sumBy(
+  rows,
+  field
+) {
   return rows.reduce(
-    (total, row) =>
+    (
+      total,
+      row
+    ) =>
       total +
-      numberValue(row[field]),
+      numberValue(
+        row[field]
+      ),
     0
   );
 }
 
 function formatNumber(value) {
-  if (typeof value === "string") {
+  if (
+    typeof value === "string"
+  ) {
     return value;
   }
 
@@ -3099,7 +3985,8 @@ function formatNumber(value) {
   ).toLocaleString(
     "es-CR",
     {
-      maximumFractionDigits: 2
+      maximumFractionDigits:
+        2
     }
   );
 }
@@ -3116,12 +4003,25 @@ function formatDate(value) {
   );
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(
+    value
+  ).toLocaleString(
+    "es-CR"
+  );
+}
+
 function dateInputValue(value) {
   if (!value) {
     return "";
   }
 
-  const date = new Date(value);
+  const date =
+    new Date(value);
 
   return date
     .toISOString()
@@ -3148,20 +4048,30 @@ function showToast(
   message,
   error = false
 ) {
-  const toast = $("toast");
+  const toast =
+    $("toast");
 
-  toast.textContent = message;
+  if (!toast) {
+    return;
+  }
+
+  toast.textContent =
+    message;
 
   toast.style.background =
     error
       ? "#b42318"
       : "#111827";
 
-  toast.classList.remove("hidden");
+  toast
+    .classList
+    .remove("hidden");
 
   setTimeout(
     () =>
-      toast.classList.add("hidden"),
+      toast
+        .classList
+        .add("hidden"),
     4000
   );
 }
