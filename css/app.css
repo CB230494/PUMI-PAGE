@@ -1573,3 +1573,53 @@ button {
     width: 100%;
   }
 }
+
+
+/* =========================================================
+   FLUJO DE ENVÍO DE ACTIVIDADES
+========================================================= */
+
+.btn-confirm {
+  border: 1px solid #087f5b;
+  background: #0b9368;
+  color: #ffffff;
+}
+
+.btn-confirm:hover {
+  background: #087f5b;
+}
+
+.btn-confirm:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.status-borrador {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.status-pendiente_regional {
+  background: #fff3cd;
+  color: #7a5200;
+}
+
+.status-devuelto_regional {
+  background: #ffe8e5;
+  color: #a1261c;
+}
+
+.status-pendiente_nacional {
+  background: #e8f1ff;
+  color: #174ea6;
+}
+
+.status-validado_nacional {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-no_validado_nacional {
+  background: #fee2e2;
+  color: #991b1b;
+}
