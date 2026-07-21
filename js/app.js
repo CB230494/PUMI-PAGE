@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js";
+import { ApiService } from "../services/api-service.js?v=20260721-3";
 
 const api = new ApiService();
 
