@@ -140,7 +140,7 @@ export class ApiService {
 
   getActivityOptions() {
     return this.request(
-      "/api/actividad-opciones"
+      "/api/actividades/opciones"
     );
   }
 
@@ -157,15 +157,6 @@ export class ApiService {
           attributes,
           geometry
         })
-      }
-    );
-  }
-
-  confirmActivitySubmission(objectId) {
-    return this.request(
-      `/api/actividades/${objectId}/confirmar-envio`,
-      {
-        method: "PATCH"
       }
     );
   }
@@ -229,7 +220,7 @@ export class ApiService {
 
   getNationalReviewQueue() {
     return this.request(
-      "/api/revision-nacional"
+      "/api/validacion-nacional"
     );
   }
 
