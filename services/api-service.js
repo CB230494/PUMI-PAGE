@@ -161,6 +161,15 @@ export class ApiService {
     );
   }
 
+  confirmActivitySubmission(objectId) {
+    return this.request(
+      `/api/actividades/${objectId}/confirmar-envio`,
+      {
+        method: "PATCH"
+      }
+    );
+  }
+
   updateActivity(
     objectId,
     attributes
