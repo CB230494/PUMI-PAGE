@@ -142,7 +142,8 @@ const state = {
   currentReviewLevel: null,
   currentPage: "dashboard",
   dashboardDelegationFilter: "",
-  dashboardActivityFilter: ""
+  dashboardActivityFilter: "",
+  selectedInstitutions: []
 };
 
 const $ = (id) => document.getElementById(id);
@@ -1748,29 +1749,49 @@ function renderActivityForm(editingRow = null) {
         </div>
 
         <div class="form-grid">
-          <label class="form-grid-full">
-            Instituciones participantes
-            <select
-              id="activity-institutions"
-              multiple
-              size="8"
-              class="multi-select"
-            ></select>
+          <div class="form-grid-full institution-picker">
+            <label>
+              Institución participante
+              <div class="institution-picker-row">
+                <select
+                  id="activity-institution-select"
+                ></select>
 
-            <small class="field-help">
-              Mantenga presionada la tecla Ctrl para seleccionar varias instituciones.
-            </small>
-          </label>
+                <button
+                  id="btn-add-institution"
+                  type="button"
+                  class="btn btn-secondary"
+                >
+                  Agregar
+                </button>
+              </div>
+            </label>
+
+            <div
+              id="selected-institutions"
+              class="selected-institutions"
+            ></div>
+          </div>
 
           <label
             id="activity-other-institution-wrap"
             class="hidden form-grid-full"
           >
             Especifique otra institución
-            <input
-              id="activity-other-institution"
-              type="text"
-            >
+            <div class="institution-picker-row">
+              <input
+                id="activity-other-institution"
+                type="text"
+              >
+
+              <button
+                id="btn-add-other-institution"
+                type="button"
+                class="btn btn-secondary"
+              >
+                Agregar otra institución
+              </button>
+            </div>
           </label>
 
           <label class="form-grid-full">
@@ -2191,62 +2212,203 @@ function updateOtherPlaceVisibility() {
 
 function setupInstitutionSelector() {
   const select =
-    $("activity-institutions");
+    $("activity-institution-select");
+
+  state.selectedInstitutions = [];
 
   fillSelect(
     select,
     getInstitutionOptions(),
-    false
+    false,
+    "Seleccione una institución"
   );
 
-  select.addEventListener(
-    "change",
-    updateOtherInstitutionVisibility
+  $("btn-add-institution")?.addEventListener(
+    "click",
+    () => {
+      const value =
+        select?.value || "";
+
+      if (!value) {
+        showToast(
+          "Seleccione una institución antes de agregarla.",
+          true
+        );
+        return;
+      }
+
+      const normalizedValue =
+        normalize(value);
+
+      const isOther =
+        ["OTRA", "OTRO"].includes(
+          normalizedValue
+        );
+
+      if (isOther) {
+        $("activity-other-institution-wrap")
+          ?.classList.remove("hidden");
+
+        $("activity-other-institution")
+          ?.focus();
+
+        return;
+      }
+
+      addSelectedInstitution(value);
+      select.value = "";
+    }
   );
+
+  $("btn-add-other-institution")
+    ?.addEventListener(
+      "click",
+      () => {
+        const input =
+          $("activity-other-institution");
+
+        const value =
+          input?.value?.trim() || "";
+
+        if (!value) {
+          showToast(
+            "Digite el nombre de la otra institución.",
+            true
+          );
+          return;
+        }
+
+        addSelectedInstitution(value, true);
+
+        input.value = "";
+
+        $("activity-other-institution-wrap")
+          ?.classList.add("hidden");
+
+        if (select) {
+          select.value = "";
+        }
+      }
+    );
+
+  renderSelectedInstitutions();
+}
+
+function addSelectedInstitution(
+  value,
+  isCustom = false
+) {
+  const cleanValue =
+    String(value || "").trim();
+
+  if (!cleanValue) {
+    return;
+  }
+
+  const alreadyExists =
+    state.selectedInstitutions.some(
+      (item) =>
+        normalize(item.value) ===
+        normalize(cleanValue)
+    );
+
+  if (alreadyExists) {
+    showToast(
+      "Esa institución ya fue agregada.",
+      true
+    );
+    return;
+  }
+
+  state.selectedInstitutions.push({
+    value: cleanValue,
+    isCustom
+  });
+
+  renderSelectedInstitutions();
+}
+
+function removeSelectedInstitution(index) {
+  state.selectedInstitutions.splice(
+    index,
+    1
+  );
+
+  renderSelectedInstitutions();
+}
+
+function renderSelectedInstitutions() {
+  const container =
+    $("selected-institutions");
+
+  if (!container) {
+    return;
+  }
+
+  if (
+    !state.selectedInstitutions.length
+  ) {
+    container.innerHTML = `
+      <div class="institution-empty">
+        No se han agregado instituciones.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML =
+    state.selectedInstitutions
+      .map(
+        (item, index) => `
+          <span class="institution-chip">
+            ${escapeHtml(item.value)}
+
+            <button
+              type="button"
+              class="institution-chip-remove"
+              data-remove-institution="${index}"
+              aria-label="Eliminar ${escapeHtml(item.value)}"
+            >
+              ✕
+            </button>
+          </span>
+        `
+      )
+      .join("");
+
+  container
+    .querySelectorAll(
+      "[data-remove-institution]"
+    )
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        () => {
+          removeSelectedInstitution(
+            Number(
+              button.dataset.removeInstitution
+            )
+          );
+        }
+      );
+    });
 }
 
 function getSelectedInstitutions() {
-  const select =
-    $("activity-institutions");
-
-  if (!select) {
-    return [];
-  }
-
-  return [
-    ...select.selectedOptions
-  ]
-    .map(
-      (option) =>
-        option.value
-    )
-    .filter(Boolean);
+  return state.selectedInstitutions.map(
+    (item) => item.value
+  );
 }
 
-function updateOtherInstitutionVisibility() {
-  const hasOther =
-    getSelectedInstitutions()
-      .some(
-        (value) =>
-          ["OTRA", "OTRO"].includes(
-            normalize(value)
-          )
-      );
-
-  $("activity-other-institution-wrap")
-    ?.classList.toggle(
-      "hidden",
-      !hasOther
-    );
-
-  if ($("activity-other-institution")) {
-    $("activity-other-institution").required =
-      hasOther;
-
-    if (!hasOther) {
-      $("activity-other-institution").value = "";
-    }
-  }
+function getOtherInstitutionsText() {
+  return state.selectedInstitutions
+    .filter(
+      (item) => item.isCustom
+    )
+    .map(
+      (item) => item.value
+    )
+    .join("; ");
 }
 
 function fillActivityForm(row) {
@@ -2358,24 +2520,53 @@ function fillActivityForm(row) {
       )
       .filter(Boolean);
 
-  for (
-    const option
-    of $("activity-institutions").options
-  ) {
-    option.selected =
-      institutions.some(
-        (value) =>
-          normalize(value) ===
-          normalize(option.value)
+  const otherInstitutions =
+    String(
+      row.otras_instituciones || ""
+    )
+      .split(/[;,|]/)
+      .map(
+        (item) => item.trim()
+      )
+      .filter(Boolean);
+
+  const catalogInstitutions =
+    getInstitutionOptions();
+
+  state.selectedInstitutions = [];
+
+  for (const value of institutions) {
+    const isCustom =
+      !catalogInstitutions.some(
+        (catalogValue) =>
+          normalize(catalogValue) ===
+          normalize(value)
       );
+
+    addSelectedInstitution(
+      value,
+      isCustom
+    );
   }
 
-  $("activity-institutions").dispatchEvent(
-    new Event("change")
-  );
+  for (const value of otherInstitutions) {
+    const alreadyExists =
+      state.selectedInstitutions.some(
+        (item) =>
+          normalize(item.value) ===
+          normalize(value)
+      );
+
+    if (!alreadyExists) {
+      addSelectedInstitution(
+        value,
+        true
+      );
+    }
+  }
 
   $("activity-other-institution").value =
-    row.otras_instituciones || "";
+    "";
 
   $("activity-follow-up-number").value =
     row.numero_seguimiento ||
@@ -2592,26 +2783,7 @@ async function submitActivity(event) {
       getSelectedInstitutions();
 
     const otherInstitution =
-      $("activity-other-institution")
-        .value
-        .trim();
-
-    const selectedOtherInstitution =
-      institutions.some(
-        (value) =>
-          ["OTRA", "OTRO"].includes(
-            normalize(value)
-          )
-      );
-
-    if (
-      selectedOtherInstitution &&
-      !otherInstitution
-    ) {
-      errors.push(
-        "Debe especificar la otra institución participante."
-      );
-    }
+      getOtherInstitutionsText();
 
     const followUpNumber =
       $("activity-follow-up-number")
@@ -5581,14 +5753,71 @@ function injectVisualEnhancements() {
       grid-column: 1 / -1;
     }
 
-    .multi-select {
-      min-height: 220px !important;
-      padding: 12px !important;
+    .institution-picker {
+      display: grid;
+      gap: 14px;
     }
 
-    .multi-select option {
-      padding: 8px 10px;
-      border-radius: 8px;
+    .institution-picker-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .institution-picker-row .btn {
+      min-width: 150px;
+    }
+
+    .selected-institutions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      min-height: 56px;
+      padding: 14px;
+      border: 1px dashed #c8d5e6;
+      border-radius: 16px;
+      background: #f8fbff;
+    }
+
+    .institution-empty {
+      color: #708096;
+      font-size: 0.9rem;
+      align-self: center;
+    }
+
+    .institution-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      max-width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #bfd0e8;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #12366f;
+      font-weight: 800;
+      line-height: 1.25;
+      box-shadow: 0 5px 14px rgba(18, 54, 111, 0.08);
+    }
+
+    .institution-chip-remove {
+      width: 25px;
+      height: 25px;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 50%;
+      background: #e8eef8;
+      color: #8f1d14;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 900;
+    }
+
+    .institution-chip-remove:hover {
+      background: #ffdcd8;
     }
 
     .field-help {
@@ -5960,6 +6189,14 @@ function injectVisualEnhancements() {
     @media (max-width: 1100px) {
       .participant-summary-card {
         grid-template-columns: 1fr;
+      }
+
+      .institution-picker-row {
+        grid-template-columns: 1fr;
+      }
+
+      .institution-picker-row .btn {
+        width: 100%;
       }
 
       .pumi-mini-kpi-grid,
