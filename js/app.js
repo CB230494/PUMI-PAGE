@@ -4323,6 +4323,70 @@ async function performNationalReview(
    NOTIFICACIONES
 ========================================================= */
 
+function getNotificationDate(row) {
+  const candidates = [
+    row?.fecha_revision_nacional,
+    row?.fecha_revision_regional,
+    row?.fecha_migracion,
+    row?.fecha_actividad
+  ];
+
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+
+    if (
+      Number.isFinite(value) &&
+      value > 0
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function formatNotificationDate(value) {
+  const numericValue = Number(value);
+
+  if (
+    !Number.isFinite(numericValue) ||
+    numericValue <= 0
+  ) {
+    return "Fecha no disponible";
+  }
+
+  return new Intl.DateTimeFormat(
+    "es-CR",
+    {
+      timeZone:
+        "America/Costa_Rica",
+
+      day:
+        "2-digit",
+
+      month:
+        "2-digit",
+
+      year:
+        "numeric",
+
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+
+      second:
+        "2-digit",
+
+      hour12:
+        true
+    }
+  ).format(
+    new Date(numericValue)
+  );
+}
+
 function createDerivedNotifications() {
   const role = getCurrentRole();
   const notes = [];
@@ -4331,7 +4395,7 @@ function createDerivedNotifications() {
     role.includes("REGIONAL") &&
     state.regionalQueue
   ) {
-    const grouped = {};
+    const grouped = new Map();
 
     for (
       const feature
@@ -4354,20 +4418,50 @@ function createDerivedNotifications() {
         row.delegacion ||
         "Delegación";
 
-      grouped[delegation] =
-        (grouped[delegation] || 0) + 1;
+      const key =
+        normalize(delegation);
+
+      if (!grouped.has(key)) {
+        grouped.set(
+          key,
+          {
+            delegation,
+            count: 0,
+            latestDate: null
+          }
+        );
+      }
+
+      const item =
+        grouped.get(key);
+
+      item.count += 1;
+
+      const rowDate =
+        getNotificationDate(row);
+
+      if (
+        rowDate &&
+        (
+          !item.latestDate ||
+          rowDate > item.latestDate
+        )
+      ) {
+        item.latestDate =
+          rowDate;
+      }
     }
 
     for (
-      const [delegation, count]
-      of Object.entries(grouped)
+      const item
+      of grouped.values()
     ) {
       notes.push({
         message:
-          `${delegation} tiene ${count} actividad(es) pendiente(s) de revisión regional.`,
+          `${item.delegation} tiene ${item.count} actividad(es) pendiente(s) de revisión regional.`,
 
         date:
-          Date.now()
+          item.latestDate
       });
     }
   }
@@ -4379,7 +4473,7 @@ function createDerivedNotifications() {
     ) &&
     state.nationalQueue
   ) {
-    const grouped = {};
+    const grouped = new Map();
 
     for (
       const feature
@@ -4402,20 +4496,50 @@ function createDerivedNotifications() {
         row.delegacion ||
         "Delegación";
 
-      grouped[delegation] =
-        (grouped[delegation] || 0) + 1;
+      const key =
+        normalize(delegation);
+
+      if (!grouped.has(key)) {
+        grouped.set(
+          key,
+          {
+            delegation,
+            count: 0,
+            latestDate: null
+          }
+        );
+      }
+
+      const item =
+        grouped.get(key);
+
+      item.count += 1;
+
+      const rowDate =
+        getNotificationDate(row);
+
+      if (
+        rowDate &&
+        (
+          !item.latestDate ||
+          rowDate > item.latestDate
+        )
+      ) {
+        item.latestDate =
+          rowDate;
+      }
     }
 
     for (
-      const [delegation, count]
-      of Object.entries(grouped)
+      const item
+      of grouped.values()
     ) {
       notes.push({
         message:
-          `${delegation} tiene ${count} actividad(es) pendiente(s) de validación nacional.`,
+          `${item.delegation} tiene ${item.count} actividad(es) pendiente(s) de validación nacional.`,
 
         date:
-          Date.now()
+          item.latestDate
       });
     }
   }
@@ -4442,6 +4566,15 @@ function createDerivedNotifications() {
               "Observado nacional"
           )
       )
+      .sort(
+        (a, b) =>
+          (
+            getNotificationDate(b) || 0
+          ) -
+          (
+            getNotificationDate(a) || 0
+          )
+      )
       .slice(0, 10)
       .forEach((row) => {
         notes.push({
@@ -4449,14 +4582,20 @@ function createDerivedNotifications() {
             `${row.actividad}: ${workflowLabel(row)}.`,
 
           date:
-            row.fecha_revision_regional ||
-            row.fecha_revision_nacional ||
-            Date.now()
+            getNotificationDate(row)
         });
       });
   }
 
-  return notes;
+  return notes.sort(
+    (a, b) =>
+      (
+        Number(b.date) || 0
+      ) -
+      (
+        Number(a.date) || 0
+      )
+  );
 }
 
 function renderNotifications() {
@@ -4483,7 +4622,7 @@ function renderNotifications() {
                 </strong>
 
                 <small>
-                  ${new Date(item.date).toLocaleString("es-CR")}
+                  ${formatNotificationDate(item.date)}
                 </small>
               </article>
             `
