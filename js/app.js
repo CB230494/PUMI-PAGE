@@ -3522,9 +3522,7 @@ function renderMyRecords() {
 
           const confirmed =
             window.confirm(
-              "¿Confirma el envío de esta actividad?
-
-Una vez enviada, ya no podrá editarla ni eliminarla mientras se encuentre en revisión regional."
+              "¿Confirma el envío de esta actividad?\n\nUna vez enviada, ya no podrá editarla ni eliminarla mientras se encuentre en revisión regional."
             );
 
           if (!confirmed) {
