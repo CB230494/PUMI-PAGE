@@ -504,6 +504,114 @@ function getCatalogValues(type) {
   ].sort((a, b) => a.localeCompare(b, "es"));
 }
 
+
+function getCatalogFieldValue(row, ...names) {
+  for (const name of names) {
+    const direct = row?.[name];
+
+    if (
+      direct !== null &&
+      direct !== undefined &&
+      String(direct).trim() !== ""
+    ) {
+      return String(direct).trim();
+    }
+
+    const normalizedName = normalize(name);
+
+    const matchedKey = Object.keys(row || {}).find(
+      (key) =>
+        normalize(key) === normalizedName
+    );
+
+    if (matchedKey) {
+      const value = row[matchedKey];
+
+      if (
+        value !== null &&
+        value !== undefined &&
+        String(value).trim() !== ""
+      ) {
+        return String(value).trim();
+      }
+    }
+  }
+
+  return "";
+}
+
+function getLocationCatalogRows() {
+  return getCatalogRows()
+    .map((row) => ({
+      provincia:
+        getCatalogFieldValue(
+          row,
+          "provincia",
+          "Provincia"
+        ),
+
+      canton:
+        getCatalogFieldValue(
+          row,
+          "canton",
+          "Cantón",
+          "Canton"
+        ),
+
+      distrito:
+        getCatalogFieldValue(
+          row,
+          "distrito",
+          "Distrito"
+        )
+    }))
+    .filter(
+      (row) =>
+        row.provincia &&
+        row.canton &&
+        row.distrito
+    );
+}
+
+function getPlaceTypeOptions() {
+  return [
+    ...new Set(
+      getCatalogRows()
+        .map((row) =>
+          getCatalogFieldValue(
+            row,
+            "tipo_lugar",
+            "Tipo lugar",
+            "Tipo de lugar"
+          )
+        )
+        .filter(Boolean)
+    )
+  ].sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
+}
+
+function getInstitutionOptions() {
+  return [
+    ...new Set(
+      getCatalogRows()
+        .map((row) =>
+          getCatalogFieldValue(
+            row,
+            "instituciones",
+            "Instituciones",
+            "institucion",
+            "Institución"
+          )
+        )
+        .filter(Boolean)
+    )
+  ].sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
+}
+
 function isHistorical(row) {
   return String(row.archivo_origen || "").trim() !== "";
 }
@@ -1340,6 +1448,7 @@ function renderActivityForm(editingRow = null) {
       <form
         id="activity-form"
         class="module-form"
+        novalidate
       >
         <div class="form-grid">
           <label>
@@ -1407,6 +1516,18 @@ function renderActivityForm(editingRow = null) {
           Participantes
         </div>
 
+        <div class="participant-summary-card">
+          <div>
+            <span>Participantes totales</span>
+            <strong id="activity-total-participants">0</strong>
+          </div>
+
+          <p>
+            El total se calcula automáticamente con hombres y mujeres.
+            Los rangos de edad deben sumar el mismo total.
+          </p>
+        </div>
+
         <div class="form-grid">
           <label>
             Hombres
@@ -1414,7 +1535,9 @@ function renderActivityForm(editingRow = null) {
               id="activity-men"
               type="number"
               min="0"
+              step="1"
               value="0"
+              required
             >
           </label>
 
@@ -1424,7 +1547,21 @@ function renderActivityForm(editingRow = null) {
               id="activity-women"
               type="number"
               min="0"
+              step="1"
               value="0"
+              required
+            >
+          </label>
+
+          <label>
+            Personas menores de 10 años
+            <input
+              id="activity-age-under-10"
+              type="number"
+              min="0"
+              step="1"
+              value="0"
+              required
             >
           </label>
 
@@ -1434,7 +1571,9 @@ function renderActivityForm(editingRow = null) {
               id="activity-age-10-18"
               type="number"
               min="0"
+              step="1"
               value="0"
+              required
             >
           </label>
 
@@ -1444,7 +1583,9 @@ function renderActivityForm(editingRow = null) {
               id="activity-age-19-30"
               type="number"
               min="0"
+              step="1"
               value="0"
+              required
             >
           </label>
 
@@ -1454,7 +1595,9 @@ function renderActivityForm(editingRow = null) {
               id="activity-age-31-45"
               type="number"
               min="0"
+              step="1"
               value="0"
+              required
             >
           </label>
 
@@ -1464,7 +1607,33 @@ function renderActivityForm(editingRow = null) {
               id="activity-age-46"
               type="number"
               min="0"
+              step="1"
               value="0"
+              required
+            >
+          </label>
+
+          <label>
+            Personas con discapacidad
+            <input
+              id="activity-disability"
+              type="number"
+              min="0"
+              step="1"
+              value="0"
+              required
+            >
+          </label>
+
+          <label>
+            Personas indígenas participantes
+            <input
+              id="activity-indigenous"
+              type="number"
+              min="0"
+              step="1"
+              value="0"
+              required
             >
           </label>
         </div>
@@ -1487,6 +1656,7 @@ function renderActivityForm(editingRow = null) {
             <select
               id="activity-canton"
               required
+              disabled
             ></select>
           </label>
 
@@ -1495,21 +1665,25 @@ function renderActivityForm(editingRow = null) {
             <select
               id="activity-district"
               required
+              disabled
             ></select>
           </label>
 
           <label>
             Tipo de lugar
-            <input
+            <select
               id="activity-place-type"
-              type="text"
-            >
+              required
+            ></select>
           </label>
 
-          <label>
-            Lugar
+          <label
+            id="activity-other-place-wrap"
+            class="hidden"
+          >
+            Especifique otro tipo de lugar
             <input
-              id="activity-place"
+              id="activity-other-place"
               type="text"
             >
           </label>
@@ -1569,28 +1743,42 @@ function renderActivityForm(editingRow = null) {
           Marque un punto en el mapa o utilice GPS.
         </div>
 
+        <div class="form-section-title">
+          Información complementaria
+        </div>
+
         <div class="form-grid">
-          <label>
-            Instituciones
-            <input
+          <label class="form-grid-full">
+            Instituciones participantes
+            <select
               id="activity-institutions"
+              multiple
+              size="8"
+              class="multi-select"
+            ></select>
+
+            <small class="field-help">
+              Mantenga presionada la tecla Ctrl para seleccionar varias instituciones.
+            </small>
+          </label>
+
+          <label
+            id="activity-other-institution-wrap"
+            class="hidden form-grid-full"
+          >
+            Especifique otra institución
+            <input
+              id="activity-other-institution"
               type="text"
             >
           </label>
 
-          <label>
-            Número de referencia
+          <label class="form-grid-full">
+            Número de seguimiento de la actividad realizada
             <input
-              id="activity-reference"
+              id="activity-follow-up-number"
               type="text"
-            >
-          </label>
-
-          <label>
-            Número de expediente
-            <input
-              id="activity-file"
-              type="text"
+              required
             >
           </label>
         </div>
@@ -1602,6 +1790,12 @@ function renderActivityForm(editingRow = null) {
             rows="4"
           ></textarea>
         </label>
+
+        <div
+          id="activity-form-errors"
+          class="form-error-summary hidden"
+          role="alert"
+        ></div>
 
         <div class="form-actions">
           <button
@@ -1629,9 +1823,15 @@ function setupActivityForm(editingRow) {
   const activitySelect =
     $("activity-name");
 
+  const validOptions =
+    state.activityOptions.filter(
+      (item) =>
+        numberValue(item.meta) > 0
+    );
+
   const programs = [
     ...new Set(
-      state.activityOptions
+      validOptions
         .map((item) => item.programa)
         .filter(Boolean)
     )
@@ -1651,10 +1851,11 @@ function setupActivityForm(editingRow) {
       programSelect.value;
 
     const options =
-      state.activityOptions.filter(
+      validOptions.filter(
         (item) =>
           normalize(item.programa) ===
-          normalize(program)
+          normalize(program) &&
+          numberValue(item.meta) > 0
       );
 
     fillSelect(
@@ -1680,6 +1881,7 @@ function setupActivityForm(editingRow) {
       card.innerHTML = "";
       $("activity-advance")
         .removeAttribute("max");
+      $("activity-advance").disabled = false;
       return;
     }
 
@@ -1735,7 +1937,10 @@ function setupActivityForm(editingRow) {
     updateProgressCard
   );
 
+  setupParticipantValidation();
   setupLocationSelectors();
+  setupPlaceTypeSelector();
+  setupInstitutionSelector();
   setupFormMap();
 
   $("btn-use-gps").addEventListener(
@@ -1783,27 +1988,265 @@ function getSelectedActivityOption() {
   );
 }
 
+function setupParticipantValidation() {
+  const ids = [
+    "activity-men",
+    "activity-women",
+    "activity-age-under-10",
+    "activity-age-10-18",
+    "activity-age-19-30",
+    "activity-age-31-45",
+    "activity-age-46",
+    "activity-disability",
+    "activity-indigenous"
+  ];
+
+  ids.forEach((id) => {
+    $(id)?.addEventListener(
+      "input",
+      updateParticipantTotal
+    );
+  });
+
+  updateParticipantTotal();
+}
+
+function updateParticipantTotal() {
+  const total =
+    numberValue(
+      $("activity-men")?.value
+    ) +
+    numberValue(
+      $("activity-women")?.value
+    );
+
+  if ($("activity-total-participants")) {
+    $("activity-total-participants").textContent =
+      formatNumber(total);
+  }
+}
+
 function setupLocationSelectors() {
+  const rows =
+    getLocationCatalogRows();
+
+  const provinceSelect =
+    $("activity-province");
+
+  const cantonSelect =
+    $("activity-canton");
+
+  const districtSelect =
+    $("activity-district");
+
+  const provinces = [
+    ...new Set(
+      rows.map(
+        (row) => row.provincia
+      )
+    )
+  ];
+
   fillSelect(
-    $("activity-province"),
-    getCatalogValues("PROVINCIA"),
+    provinceSelect,
+    provinces,
     false,
     "Seleccione una provincia"
   );
 
   fillSelect(
-    $("activity-canton"),
-    getCatalogValues("CANTON"),
+    cantonSelect,
+    [],
     false,
     "Seleccione un cantón"
   );
 
   fillSelect(
-    $("activity-district"),
-    getCatalogValues("DISTRITO"),
+    districtSelect,
+    [],
     false,
     "Seleccione un distrito"
   );
+
+  cantonSelect.disabled = true;
+  districtSelect.disabled = true;
+
+  provinceSelect.addEventListener(
+    "change",
+    () => {
+      const province =
+        provinceSelect.value;
+
+      const cantons = [
+        ...new Set(
+          rows
+            .filter(
+              (row) =>
+                normalize(row.provincia) ===
+                normalize(province)
+            )
+            .map(
+              (row) => row.canton
+            )
+        )
+      ];
+
+      fillSelect(
+        cantonSelect,
+        cantons,
+        false,
+        "Seleccione un cantón"
+      );
+
+      fillSelect(
+        districtSelect,
+        [],
+        false,
+        "Seleccione un distrito"
+      );
+
+      cantonSelect.disabled =
+        cantons.length === 0;
+
+      districtSelect.disabled = true;
+    }
+  );
+
+  cantonSelect.addEventListener(
+    "change",
+    () => {
+      const province =
+        provinceSelect.value;
+
+      const canton =
+        cantonSelect.value;
+
+      const districts = [
+        ...new Set(
+          rows
+            .filter(
+              (row) =>
+                normalize(row.provincia) ===
+                  normalize(province) &&
+                normalize(row.canton) ===
+                  normalize(canton)
+            )
+            .map(
+              (row) => row.distrito
+            )
+        )
+      ];
+
+      fillSelect(
+        districtSelect,
+        districts,
+        false,
+        "Seleccione un distrito"
+      );
+
+      districtSelect.disabled =
+        districts.length === 0;
+    }
+  );
+}
+
+function setupPlaceTypeSelector() {
+  const select =
+    $("activity-place-type");
+
+  fillSelect(
+    select,
+    getPlaceTypeOptions(),
+    false,
+    "Seleccione un tipo de lugar"
+  );
+
+  select.addEventListener(
+    "change",
+    updateOtherPlaceVisibility
+  );
+}
+
+function updateOtherPlaceVisibility() {
+  const isOther =
+    normalize(
+      $("activity-place-type")?.value
+    ) === "OTRO";
+
+  $("activity-other-place-wrap")
+    ?.classList.toggle(
+      "hidden",
+      !isOther
+    );
+
+  if ($("activity-other-place")) {
+    $("activity-other-place").required =
+      isOther;
+
+    if (!isOther) {
+      $("activity-other-place").value = "";
+    }
+  }
+}
+
+function setupInstitutionSelector() {
+  const select =
+    $("activity-institutions");
+
+  fillSelect(
+    select,
+    getInstitutionOptions(),
+    false
+  );
+
+  select.addEventListener(
+    "change",
+    updateOtherInstitutionVisibility
+  );
+}
+
+function getSelectedInstitutions() {
+  const select =
+    $("activity-institutions");
+
+  if (!select) {
+    return [];
+  }
+
+  return [
+    ...select.selectedOptions
+  ]
+    .map(
+      (option) =>
+        option.value
+    )
+    .filter(Boolean);
+}
+
+function updateOtherInstitutionVisibility() {
+  const hasOther =
+    getSelectedInstitutions()
+      .some(
+        (value) =>
+          ["OTRA", "OTRO"].includes(
+            normalize(value)
+          )
+      );
+
+  $("activity-other-institution-wrap")
+    ?.classList.toggle(
+      "hidden",
+      !hasOther
+    );
+
+  if ($("activity-other-institution")) {
+    $("activity-other-institution").required =
+      hasOther;
+
+    if (!hasOther) {
+      $("activity-other-institution").value = "";
+    }
+  }
 }
 
 function fillActivityForm(row) {
@@ -1844,6 +2287,9 @@ function fillActivityForm(row) {
   $("activity-women").value =
     row.cantidad_mujeres || 0;
 
+  $("activity-age-under-10").value =
+    row.cantidad_menores_10 || 0;
+
   $("activity-age-10-18").value =
     row.edad_10_18 || 0;
 
@@ -1856,9 +2302,21 @@ function fillActivityForm(row) {
   $("activity-age-46").value =
     row.edad_46_mas || 0;
 
+  $("activity-disability").value =
+    row.cantidad_discapacidad || 0;
+
+  $("activity-indigenous").value =
+    row.cantidad_indigenas || 0;
+
+  updateParticipantTotal();
+
   setSelectValue(
     $("activity-province"),
     row.provincia
+  );
+
+  $("activity-province").dispatchEvent(
+    new Event("change")
   );
 
   setSelectValue(
@@ -1866,28 +2324,64 @@ function fillActivityForm(row) {
     row.canton
   );
 
+  $("activity-canton").dispatchEvent(
+    new Event("change")
+  );
+
   setSelectValue(
     $("activity-district"),
     row.distrito
   );
 
-  $("activity-place-type").value =
-    row.tipo_lugar || "";
+  setSelectValue(
+    $("activity-place-type"),
+    row.tipo_lugar
+  );
 
-  $("activity-place").value =
-    row.lugar || "";
+  $("activity-place-type").dispatchEvent(
+    new Event("change")
+  );
+
+  $("activity-other-place").value =
+    row.otro_tipo_lugar || "";
 
   $("activity-school").value =
     row.centro_educativo || "";
 
-  $("activity-institutions").value =
-    row.instituciones || "";
+  const institutions =
+    String(
+      row.instituciones || ""
+    )
+      .split(/[;,|]/)
+      .map(
+        (item) => item.trim()
+      )
+      .filter(Boolean);
 
-  $("activity-reference").value =
-    row.numero_referencia || "";
+  for (
+    const option
+    of $("activity-institutions").options
+  ) {
+    option.selected =
+      institutions.some(
+        (value) =>
+          normalize(value) ===
+          normalize(option.value)
+      );
+  }
 
-  $("activity-file").value =
-    row.numero_expediente || "";
+  $("activity-institutions").dispatchEvent(
+    new Event("change")
+  );
+
+  $("activity-other-institution").value =
+    row.otras_instituciones || "";
+
+  $("activity-follow-up-number").value =
+    row.numero_seguimiento ||
+    row.numero_referencia ||
+    row.numero_expediente ||
+    "";
 
   $("activity-observations").value =
     row.observaciones || "";
@@ -1922,13 +2416,17 @@ function fillActivityForm(row) {
 async function submitActivity(event) {
   event.preventDefault();
 
+  const errors = [];
+
   try {
+    clearActivityFormErrors();
+
     const selectedOption =
       getSelectedActivityOption();
 
     if (!selectedOption) {
-      throw new Error(
-        "Debe seleccionar una actividad válida."
+      errors.push(
+        "Debe seleccionar una actividad válida con meta mayor que cero."
       );
     }
 
@@ -1938,17 +2436,18 @@ async function submitActivity(event) {
       );
 
     if (quantity <= 0) {
-      throw new Error(
+      errors.push(
         "El avance realizado debe ser mayor a cero."
       );
     }
 
     if (
+      selectedOption &&
       !state.editingObjectId &&
       quantity >
         selectedOption.disponible_registro
     ) {
-      throw new Error(
+      errors.push(
         `Solo puede registrar ${selectedOption.disponible_registro} como máximo para esta actividad.`
       );
     }
@@ -1962,6 +2461,199 @@ async function submitActivity(event) {
       numberValue(
         $("activity-women").value
       );
+
+    const participants =
+      men + women;
+
+    const ageUnder10 =
+      numberValue(
+        $("activity-age-under-10").value
+      );
+
+    const age10To18 =
+      numberValue(
+        $("activity-age-10-18").value
+      );
+
+    const age19To30 =
+      numberValue(
+        $("activity-age-19-30").value
+      );
+
+    const age31To45 =
+      numberValue(
+        $("activity-age-31-45").value
+      );
+
+    const age46Plus =
+      numberValue(
+        $("activity-age-46").value
+      );
+
+    const totalAges =
+      ageUnder10 +
+      age10To18 +
+      age19To30 +
+      age31To45 +
+      age46Plus;
+
+    const disability =
+      numberValue(
+        $("activity-disability").value
+      );
+
+    const indigenous =
+      numberValue(
+        $("activity-indigenous").value
+      );
+
+    if (participants <= 0) {
+      errors.push(
+        "Debe registrar al menos una persona participante."
+      );
+    }
+
+    if (
+      totalAges !==
+      participants
+    ) {
+      errors.push(
+        `Los rangos de edad suman ${totalAges}, pero hombres y mujeres suman ${participants}.`
+      );
+    }
+
+    if (
+      disability >
+      participants
+    ) {
+      errors.push(
+        "Las personas con discapacidad no pueden superar el total de participantes."
+      );
+    }
+
+    if (
+      indigenous >
+      participants
+    ) {
+      errors.push(
+        "Las personas indígenas participantes no pueden superar el total de participantes."
+      );
+    }
+
+    const province =
+      $("activity-province").value;
+
+    const canton =
+      $("activity-canton").value;
+
+    const district =
+      $("activity-district").value;
+
+    if (!province) {
+      errors.push(
+        "Debe seleccionar una provincia."
+      );
+    }
+
+    if (!canton) {
+      errors.push(
+        "Debe seleccionar un cantón."
+      );
+    }
+
+    if (!district) {
+      errors.push(
+        "Debe seleccionar un distrito."
+      );
+    }
+
+    const placeType =
+      $("activity-place-type").value;
+
+    const otherPlace =
+      $("activity-other-place").value.trim();
+
+    if (!placeType) {
+      errors.push(
+        "Debe seleccionar un tipo de lugar."
+      );
+    }
+
+    if (
+      normalize(placeType) === "OTRO" &&
+      !otherPlace
+    ) {
+      errors.push(
+        "Debe especificar el otro tipo de lugar."
+      );
+    }
+
+    const institutions =
+      getSelectedInstitutions();
+
+    const otherInstitution =
+      $("activity-other-institution")
+        .value
+        .trim();
+
+    const selectedOtherInstitution =
+      institutions.some(
+        (value) =>
+          ["OTRA", "OTRO"].includes(
+            normalize(value)
+          )
+      );
+
+    if (
+      selectedOtherInstitution &&
+      !otherInstitution
+    ) {
+      errors.push(
+        "Debe especificar la otra institución participante."
+      );
+    }
+
+    const followUpNumber =
+      $("activity-follow-up-number")
+        .value
+        .trim();
+
+    if (!followUpNumber) {
+      errors.push(
+        "Debe indicar el número de seguimiento de la actividad realizada."
+      );
+    }
+
+    if (!state.selectedPoint) {
+      errors.push(
+        "Debe marcar una ubicación en el mapa o utilizar el GPS."
+      );
+    }
+
+    if (
+      !$("activity-date").value
+    ) {
+      errors.push(
+        "Debe indicar la fecha de la actividad."
+      );
+    }
+
+    if (
+      !$("activity-responsible")
+        .value
+        .trim()
+    ) {
+      errors.push(
+        "Debe indicar la persona responsable."
+      );
+    }
+
+    if (errors.length) {
+      showActivityFormErrors(errors);
+      throw new Error(
+        "Revise los datos indicados antes de continuar."
+      );
+    }
 
     const attributes = {
       programa:
@@ -1982,7 +2674,9 @@ async function submitActivity(event) {
         quantity,
 
       responsable:
-        $("activity-responsible").value,
+        $("activity-responsible")
+          .value
+          .trim(),
 
       cantidad_hombres:
         men,
@@ -1991,65 +2685,71 @@ async function submitActivity(event) {
         women,
 
       cantidad_participantes:
-        men + women,
+        participants,
+
+      cantidad_menores_10:
+        ageUnder10,
 
       edad_10_18:
-        numberValue(
-          $("activity-age-10-18").value
-        ),
+        age10To18,
 
       edad_19_30:
-        numberValue(
-          $("activity-age-19-30").value
-        ),
+        age19To30,
 
       edad_31_45:
-        numberValue(
-          $("activity-age-31-45").value
-        ),
+        age31To45,
 
       edad_46_mas:
-        numberValue(
-          $("activity-age-46").value
-        ),
+        age46Plus,
+
+      cantidad_discapacidad:
+        disability,
+
+      cantidad_indigenas:
+        indigenous,
 
       provincia:
-        $("activity-province").value,
+        province,
 
       canton:
-        $("activity-canton").value,
+        canton,
 
       distrito:
-        $("activity-district").value,
+        district,
 
       tipo_lugar:
-        $("activity-place-type").value,
+        placeType,
 
-      lugar:
-        $("activity-place").value,
+      otro_tipo_lugar:
+        normalize(placeType) ===
+        "OTRO"
+          ? otherPlace
+          : "",
 
       centro_educativo:
-        $("activity-school").value,
+        $("activity-school")
+          .value
+          .trim(),
 
       instituciones:
-        $("activity-institutions").value,
+        institutions.join("; "),
 
-      numero_referencia:
-        $("activity-reference").value,
+      otras_instituciones:
+        otherInstitution,
 
-      numero_expediente:
-        $("activity-file").value,
+      numero_seguimiento:
+        followUpNumber,
 
       observaciones:
-        $("activity-observations").value,
+        $("activity-observations")
+          .value
+          .trim(),
 
       latitud:
-        state.selectedPoint?.latitude ??
-        null,
+        state.selectedPoint.latitude,
 
       longitud:
-        state.selectedPoint?.longitude ??
-        null
+        state.selectedPoint.longitude
     };
 
     if (state.editingObjectId) {
@@ -2064,20 +2764,17 @@ async function submitActivity(event) {
     } else {
       await api.createActivity(
         attributes,
+        {
+          x:
+            state.selectedPoint.longitude,
 
-        state.selectedPoint
-          ? {
-              x:
-                state.selectedPoint.longitude,
+          y:
+            state.selectedPoint.latitude,
 
-              y:
-                state.selectedPoint.latitude,
-
-              spatialReference: {
-                wkid: 4326
-              }
-            }
-          : null
+          spatialReference: {
+            wkid: 4326
+          }
+        }
       );
 
       showToast(
@@ -2093,6 +2790,56 @@ async function submitActivity(event) {
   } catch (error) {
     showToast(error.message, true);
   }
+}
+
+function clearActivityFormErrors() {
+  const container =
+    $("activity-form-errors");
+
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = "";
+  container.classList.add(
+    "hidden"
+  );
+}
+
+function showActivityFormErrors(errors) {
+  const container =
+    $("activity-form-errors");
+
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = `
+    <strong>
+      Corrija lo siguiente:
+    </strong>
+
+    <ul>
+      ${errors
+        .map(
+          (error) => `
+            <li>
+              ${escapeHtml(error)}
+            </li>
+          `
+        )
+        .join("")}
+    </ul>
+  `;
+
+  container.classList.remove(
+    "hidden"
+  );
+
+  container.scrollIntoView({
+    behavior: "smooth",
+    block: "center"
+  });
 }
 
 /* =========================================================
@@ -2517,10 +3264,13 @@ function renderActivityDataSections(row) {
         ["Total", formatNumber(row.cantidad_participantes)],
         ["Hombres", formatNumber(row.cantidad_hombres)],
         ["Mujeres", formatNumber(row.cantidad_mujeres)],
+        ["Menores de 10 años", formatNumber(row.cantidad_menores_10)],
         ["Edad 10-18", formatNumber(row.edad_10_18)],
         ["Edad 19-30", formatNumber(row.edad_19_30)],
         ["Edad 31-45", formatNumber(row.edad_31_45)],
-        ["Edad 46 o más", formatNumber(row.edad_46_mas)]
+        ["Edad 46 o más", formatNumber(row.edad_46_mas)],
+        ["Personas con discapacidad", formatNumber(row.cantidad_discapacidad)],
+        ["Personas indígenas participantes", formatNumber(row.cantidad_indigenas)]
       ]
     )}
 
@@ -2531,7 +3281,7 @@ function renderActivityDataSections(row) {
         ["Cantón", row.canton],
         ["Distrito", row.distrito],
         ["Tipo de lugar", row.tipo_lugar],
-        ["Lugar", row.lugar],
+        ["Otro tipo de lugar", row.otro_tipo_lugar],
         ["Centro educativo", row.centro_educativo]
       ]
     )}
@@ -2540,8 +3290,8 @@ function renderActivityDataSections(row) {
       "Información complementaria",
       [
         ["Instituciones", row.instituciones],
-        ["Número de referencia", row.numero_referencia],
-        ["Número de expediente", row.numero_expediente],
+        ["Otras instituciones", row.otras_instituciones],
+        ["Número de seguimiento", row.numero_seguimiento],
         ["Observaciones", row.observaciones]
       ]
     )}
@@ -4794,6 +5544,84 @@ function injectVisualEnhancements() {
       gap: 14px;
     }
 
+    .participant-summary-card {
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: center;
+      margin: 0 0 20px;
+      padding: 18px 20px;
+      border: 1px solid #dce5f1;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #f8fbff, #eef4ff);
+    }
+
+    .participant-summary-card div {
+      display: grid;
+      gap: 5px;
+    }
+
+    .participant-summary-card span {
+      color: #66758b;
+      font-weight: 800;
+    }
+
+    .participant-summary-card strong {
+      color: #003b8f;
+      font-size: 2rem;
+    }
+
+    .participant-summary-card p {
+      margin: 0;
+      color: #536176;
+      line-height: 1.5;
+    }
+
+    .form-grid-full {
+      grid-column: 1 / -1;
+    }
+
+    .multi-select {
+      min-height: 220px !important;
+      padding: 12px !important;
+    }
+
+    .multi-select option {
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+
+    .field-help {
+      display: block;
+      margin-top: 7px;
+      color: #66758b;
+      font-size: 0.78rem;
+      line-height: 1.4;
+    }
+
+    .form-error-summary {
+      margin-top: 20px;
+      padding: 18px 20px;
+      border: 1px solid #efb0aa;
+      border-radius: 16px;
+      background: #fff2f0;
+      color: #8f1d14;
+    }
+
+    .form-error-summary strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .form-error-summary ul {
+      margin: 0;
+      padding-left: 22px;
+    }
+
+    .form-error-summary li + li {
+      margin-top: 5px;
+    }
+
     .pumi-dashboard-filter-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5130,6 +5958,10 @@ function injectVisualEnhancements() {
     }
 
     @media (max-width: 1100px) {
+      .participant-summary-card {
+        grid-template-columns: 1fr;
+      }
+
       .pumi-mini-kpi-grid,
       .pumi-review-filters,
       .pumi-dashboard-filter-grid {
