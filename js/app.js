@@ -425,12 +425,26 @@ async function loadData() {
       api.getDashboard()
     ]);
 
-    state.actividades = activities.features || [];
+    state.activityOptions =
+      (activityOptions.options || [])
+        .filter(
+          (item) =>
+            numberValue(item.meta) > 0
+        );
+
+    state.actividades =
+      filterVisibleActivityFeatures(
+        activities.features || []
+      );
+
     state.resumen = summary.features || [];
     state.catalogos = catalogs.features || [];
     state.delegaciones = delegations.features || [];
-    state.activityOptions = activityOptions.options || [];
-    state.dashboard = dashboard || null;
+
+    state.dashboard =
+      buildVisibleDashboard(
+        dashboard || {}
+      );
 
     state.regionalQueue = null;
     state.nationalQueue = null;
@@ -439,7 +453,19 @@ async function loadData() {
       role.includes("REGIONAL") ||
       role.includes("ADMIN")
     ) {
-      state.regionalQueue = await api.getRegionalReviewQueue();
+      state.regionalQueue =
+        await api.getRegionalReviewQueue();
+
+      state.regionalQueue.features =
+        filterVisibleActivityFeatures(
+          state.regionalQueue.features || []
+        );
+
+      state.regionalQueue.total =
+        state.regionalQueue.features.length;
+
+      state.regionalQueue.pending_count =
+        state.regionalQueue.features.length;
     }
 
     if (
@@ -447,7 +473,19 @@ async function loadData() {
       role === "NACIONAL" ||
       role.includes("ADMIN")
     ) {
-      state.nationalQueue = await api.getNationalReviewQueue();
+      state.nationalQueue =
+        await api.getNationalReviewQueue();
+
+      state.nationalQueue.features =
+        filterVisibleActivityFeatures(
+          state.nationalQueue.features || []
+        );
+
+      state.nationalQueue.total =
+        state.nationalQueue.features.length;
+
+      state.nationalQueue.pending_count =
+        state.nationalQueue.features.length;
     }
 
     state.notificaciones = createDerivedNotifications();
@@ -471,10 +509,230 @@ async function loadData() {
 ========================================================= */
 
 function getRows() {
-  return state.actividades.map((feature) => ({
-    ...(feature.attributes || {}),
-    __geometry: feature.geometry || null
-  }));
+  return state.actividades
+    .filter(isVisibleActivityFeature)
+    .map((feature) => ({
+      ...(feature.attributes || {}),
+      __geometry: feature.geometry || null
+    }));
+}
+
+function hasPositiveMetaForActivity(program, activity) {
+  const normalizedProgram =
+    normalize(program);
+
+  const normalizedActivity =
+    normalize(activity);
+
+  if (
+    !normalizedProgram ||
+    !normalizedActivity ||
+    normalizedProgram === "PROGRAMA" ||
+    normalizedActivity === "ACTIVIDAD"
+  ) {
+    return false;
+  }
+
+  return state.activityOptions.some(
+    (item) =>
+      normalize(item.programa) ===
+        normalizedProgram &&
+      normalize(item.actividad) ===
+        normalizedActivity &&
+      numberValue(item.meta) > 0
+  );
+}
+
+function isVisibleActivityRow(row = {}) {
+  return (
+    normalize(row.estado_registro) !==
+      "ELIMINADO" &&
+    hasPositiveMetaForActivity(
+      row.programa,
+      row.actividad
+    )
+  );
+}
+
+function isVisibleActivityFeature(feature = {}) {
+  return isVisibleActivityRow(
+    feature.attributes || {}
+  );
+}
+
+function filterVisibleActivityFeatures(features = []) {
+  return (features || []).filter(
+    isVisibleActivityFeature
+  );
+}
+
+function buildVisibleDashboard(sourceDashboard = {}) {
+  const rows = getRows();
+  const progress = buildProgressRows(rows);
+
+  const meta =
+    sumBy(progress, "meta");
+
+  const advance =
+    sumBy(progress, "advance");
+
+  const pending =
+    Math.max(meta - advance, 0);
+
+  const participants =
+    rows.reduce(
+      (total, row) =>
+        total +
+        numberValue(
+          row.cantidad_participantes
+        ),
+      0
+    );
+
+  const statuses = {};
+
+  for (const row of rows) {
+    const status =
+      workflowLabel(row);
+
+    statuses[status] =
+      (statuses[status] || 0) + 1;
+  }
+
+  const delegationMap =
+    new Map();
+
+  for (const row of rows) {
+    const delegation =
+      String(
+        row.delegacion || ""
+      ).trim();
+
+    if (!delegation) {
+      continue;
+    }
+
+    const key =
+      normalize(delegation);
+
+    if (!delegationMap.has(key)) {
+      delegationMap.set(
+        key,
+        {
+          delegacion:
+            delegation,
+
+          direccion_regional:
+            String(
+              row.direccion_regional ||
+              ""
+            ).trim(),
+
+          registros:
+            0,
+
+          pendientes_regional:
+            0,
+
+          pendientes_nacional:
+            0,
+
+          validados:
+            0
+        }
+      );
+    }
+
+    const item =
+      delegationMap.get(key);
+
+    item.registros += 1;
+
+    const status =
+      workflowLabel(row);
+
+    if (
+      status ===
+      "Pendiente regional"
+    ) {
+      item.pendientes_regional += 1;
+    }
+
+    if (
+      status ===
+      "Pendiente nacional"
+    ) {
+      item.pendientes_nacional += 1;
+    }
+
+    if (
+      status ===
+      "Validado nacional"
+    ) {
+      item.validados += 1;
+    }
+  }
+
+  const programs =
+    (sourceDashboard.programs || [])
+      .filter(
+        (item) =>
+          numberValue(item.meta) > 0
+      );
+
+  return {
+    ...sourceDashboard,
+
+    kpis: {
+      registros:
+        rows.length,
+
+      meta,
+
+      avance:
+        advance,
+
+      pendiente:
+        pending,
+
+      porcentaje_avance:
+        meta > 0
+          ? (advance / meta) * 100
+          : 0,
+
+      participantes:
+        participants
+    },
+
+    statuses,
+
+    delegations: [
+      ...delegationMap.values()
+    ].sort(
+      (a, b) =>
+        a.delegacion.localeCompare(
+          b.delegacion,
+          "es"
+        )
+    ),
+
+    programs,
+
+    activity_breakdown:
+      (
+        sourceDashboard.activity_breakdown ||
+        []
+      ).filter(
+        (item) =>
+          numberValue(item.meta) > 0
+      ),
+
+    map_features:
+      filterVisibleActivityFeatures(
+        sourceDashboard.map_features ||
+        state.actividades
+      )
+  };
 }
 
 function getCatalogRows() {
@@ -1414,6 +1672,10 @@ function getDashboardMapFeatures() {
   return source.filter((feature) => {
     const row =
       feature.attributes || {};
+
+    if (!isVisibleActivityRow(row)) {
+      return false;
+    }
 
     if (
       state.dashboardDelegationFilter &&
@@ -3789,7 +4051,9 @@ function renderReviewQueue(
   title
 ) {
   const features =
-    queue?.features || [];
+    filterVisibleActivityFeatures(
+      queue?.features || []
+    );
 
   const rows = features.map(
     (feature) => ({
@@ -4952,6 +5216,10 @@ function buildDelegationMapGroups(features) {
     const row =
       feature.attributes || {};
 
+    if (!isVisibleActivityRow(row)) {
+      continue;
+    }
+
     const delegation =
       String(
         row.delegacion ||
@@ -5059,6 +5327,10 @@ function buildDelegationMapGroups(features) {
       activities: [
         ...group.activities.values()
       ]
+        .filter(
+          (item) =>
+            numberValue(item.meta) > 0
+        )
         .map((item) => ({
           ...item,
 
@@ -5088,6 +5360,10 @@ function buildDelegationMapGroups(features) {
           );
         })
     }))
+    .filter(
+      (group) =>
+        group.activities.length > 0
+    )
     .sort((a, b) =>
       a.delegacion.localeCompare(
         b.delegacion,
@@ -5101,26 +5377,10 @@ function buildDelegationPopupHtml(
   coordinates
 ) {
   const activities =
-    group.activities.length
-      ? group.activities
-      : [
-          {
-            programa:
-              "Sin programa",
-
-            actividad:
-              "Sin actividad",
-
-            meta:
-              0,
-
-            avance:
-              0,
-
-            pendiente:
-              0
-          }
-        ];
+    (group.activities || []).filter(
+      (item) =>
+        numberValue(item.meta) > 0
+    );
 
   return `
     <div class="pumi-map-popup">
@@ -5142,9 +5402,10 @@ function buildDelegationPopupHtml(
       </div>
 
       <div class="pumi-map-popup-list">
-        ${activities
-          .map(
-            (item) => `
+        ${
+          activities.length
+            ? activities.map(
+                (item) => `
               <div class="pumi-map-popup-activity">
                 <div class="pumi-map-popup-program">
                   ${escapeHtml(
@@ -5187,9 +5448,15 @@ function buildDelegationPopupHtml(
                   </span>
                 </div>
               </div>
-            `
-          )
-          .join("")}
+                `
+              )
+              .join("")
+            : `
+                <div class="module-empty">
+                  No hay actividades con meta asignada.
+                </div>
+              `
+        }
       </div>
 
       ${
