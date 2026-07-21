@@ -645,8 +645,28 @@ function workflowLabel(row) {
     return "Revisado";
   }
 
-  const regional = normalize(row.estado_regional);
-  const national = normalize(row.estado_nacional);
+  const flow =
+    normalize(row.estado_flujo);
+
+  const labels = {
+    BORRADOR: "Borrador",
+    PENDIENTE_REGIONAL: "Pendiente regional",
+    DEVUELTO_REGIONAL: "Devuelto regional",
+    PENDIENTE_NACIONAL: "Pendiente nacional",
+    VALIDADO_NACIONAL: "Validado nacional",
+    NO_VALIDADO_NACIONAL: "No validado nacional",
+    ELIMINADO: "Eliminado"
+  };
+
+  if (labels[flow]) {
+    return labels[flow];
+  }
+
+  const regional =
+    normalize(row.estado_regional);
+
+  const national =
+    normalize(row.estado_nacional);
 
   if (
     national.includes("VALIDAD") ||
@@ -1856,7 +1876,7 @@ function renderActivityForm(editingRow = null) {
             ${
               editingRow
                 ? "Guardar cambios"
-                : "Enviar a revisión regional"
+                : "Guardar borrador"
             }
           </button>
         </div>
@@ -3043,7 +3063,7 @@ async function submitActivity(event) {
       );
 
       showToast(
-        "Actividad enviada a revisión regional."
+        "Actividad guardada como borrador."
       );
     }
 
@@ -3299,9 +3319,34 @@ function renderMyRecords() {
   const rows = getRows().filter(
     (row) =>
       !isHistorical(row) &&
+      normalize(row.estado_registro) !== "ELIMINADO" &&
       normalize(row.usuario_registra) ===
         username
   );
+
+  function getRecordPermissions(row) {
+    const flow = normalize(
+      row.estado_flujo
+    );
+
+    return {
+      canEdit: [
+        "BORRADOR",
+        "DEVUELTO_REGIONAL"
+      ].includes(flow),
+
+      canDelete: [
+        "BORRADOR",
+        "DEVUELTO_REGIONAL",
+        "NO_VALIDADO_NACIONAL"
+      ].includes(flow),
+
+      canConfirm: [
+        "BORRADOR",
+        "DEVUELTO_REGIONAL"
+      ].includes(flow)
+    };
+  }
 
   $("coming-page").innerHTML = `
     <article class="panel-card">
@@ -3329,60 +3374,92 @@ function renderMyRecords() {
           </thead>
 
           <tbody>
-            ${rows
-              .map(
-                (row) => `
+            ${rows.length
+              ? rows
+                  .map((row) => {
+                    const permissions =
+                      getRecordPermissions(row);
+
+                    return `
+                      <tr>
+                        <td>
+                          ${formatDate(row.fecha_actividad)}
+                        </td>
+
+                        <td>
+                          ${escapeHtml(row.programa)}
+                        </td>
+
+                        <td>
+                          ${escapeHtml(row.actividad)}
+                        </td>
+
+                        <td>
+                          ${formatNumber(row.avance_realizado)}
+                        </td>
+
+                        <td>
+                          <span class="status-badge status-${normalize(row.estado_flujo).toLowerCase()}">
+                            ${escapeHtml(workflowLabel(row))}
+                          </span>
+                        </td>
+
+                        <td>
+                          <div class="table-actions">
+                            <button
+                              class="btn btn-secondary btn-small"
+                              data-view-record="${getObjectId(row)}"
+                            >
+                              Ver
+                            </button>
+
+                            ${permissions.canEdit
+                              ? `
+                                  <button
+                                    class="btn btn-secondary btn-small"
+                                    data-edit-record="${getObjectId(row)}"
+                                  >
+                                    Editar
+                                  </button>
+                                `
+                              : ""}
+
+                            ${permissions.canDelete
+                              ? `
+                                  <button
+                                    class="btn btn-danger btn-small"
+                                    data-delete-record="${getObjectId(row)}"
+                                  >
+                                    Eliminar
+                                  </button>
+                                `
+                              : ""}
+
+                            ${permissions.canConfirm
+                              ? `
+                                  <button
+                                    class="btn btn-confirm btn-small"
+                                    data-confirm-record="${getObjectId(row)}"
+                                  >
+                                    📤 Confirmar envío
+                                  </button>
+                                `
+                              : ""}
+                          </div>
+                        </td>
+                      </tr>
+                    `;
+                  })
+                  .join("")
+              : `
                   <tr>
-                    <td>
-                      ${formatDate(row.fecha_actividad)}
-                    </td>
-
-                    <td>
-                      ${escapeHtml(row.programa)}
-                    </td>
-
-                    <td>
-                      ${escapeHtml(row.actividad)}
-                    </td>
-
-                    <td>
-                      ${formatNumber(row.avance_realizado)}
-                    </td>
-
-                    <td>
-                      <span class="status-badge">
-                        ${escapeHtml(workflowLabel(row))}
-                      </span>
-                    </td>
-
-                    <td>
-                      <div class="table-actions">
-                        <button
-                          class="btn btn-secondary btn-small"
-                          data-view-record="${getObjectId(row)}"
-                        >
-                          Ver
-                        </button>
-
-                        <button
-                          class="btn btn-secondary btn-small"
-                          data-edit-record="${getObjectId(row)}"
-                        >
-                          Editar
-                        </button>
-
-                        <button
-                          class="btn btn-danger btn-small"
-                          data-delete-record="${getObjectId(row)}"
-                        >
-                          Eliminar
-                        </button>
+                    <td colspan="6">
+                      <div class="module-empty">
+                        No hay registros disponibles.
                       </div>
                     </td>
                   </tr>
-                `
-              )
-              .join("")}
+                `}
           </tbody>
         </table>
       </div>
@@ -3428,6 +3505,51 @@ function renderMyRecords() {
 
           if (row) {
             renderActivityForm(row);
+          }
+        }
+      );
+    });
+
+  document
+    .querySelectorAll("[data-confirm-record]")
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        async () => {
+          const objectId = Number(
+            button.dataset.confirmRecord
+          );
+
+          const confirmed =
+            window.confirm(
+              "¿Confirma el envío de esta actividad?
+
+Una vez enviada, ya no podrá editarla ni eliminarla mientras se encuentre en revisión regional."
+            );
+
+          if (!confirmed) {
+            return;
+          }
+
+          button.disabled = true;
+
+          try {
+            await api.confirmActivitySubmission(
+              objectId
+            );
+
+            await loadData();
+            renderMyRecords();
+
+            showToast(
+              "Actividad enviada a revisión regional."
+            );
+          } catch (error) {
+            button.disabled = false;
+            showToast(
+              error.message,
+              true
+            );
           }
         }
       );
@@ -4327,6 +4449,7 @@ function getNotificationDate(row) {
   const candidates = [
     row?.fecha_revision_nacional,
     row?.fecha_revision_regional,
+    row?.fecha_confirmacion_envio,
     row?.fecha_migracion,
     row?.fecha_actividad
   ];
@@ -4563,7 +4686,7 @@ function createDerivedNotifications() {
             workflowLabel(row) ===
               "Validado nacional" ||
             workflowLabel(row) ===
-              "Observado nacional"
+              "No validado nacional"
           )
       )
       .sort(
