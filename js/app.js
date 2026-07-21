@@ -874,23 +874,38 @@ function buildProgressRows(rows = getRows()) {
     }
   }
 
-  return [...grouped.values()].map((item) => {
-    const pending = Math.max(
-      item.meta - item.advance,
-      0
-    );
+  return [...grouped.values()]
+    .filter(
+      (item) =>
+        numberValue(item.meta) > 0
+    )
+    .map((item) => {
+      const cappedAdvance =
+        Math.min(
+          numberValue(item.advance),
+          numberValue(item.meta)
+        );
 
-    const percentage =
-      item.meta > 0
-        ? (item.advance / item.meta) * 100
-        : 0;
+      const pending = Math.max(
+        item.meta - cappedAdvance,
+        0
+      );
 
-    return {
-      ...item,
-      pending,
-      percentage
-    };
-  });
+      const percentage =
+        item.meta > 0
+          ? Math.min(
+              (cappedAdvance / item.meta) * 100,
+              100
+            )
+          : 0;
+
+      return {
+        ...item,
+        advance: cappedAdvance,
+        pending,
+        percentage
+      };
+    });
 }
 
 function renderProgramSummaryFromLocal() {
@@ -937,9 +952,15 @@ function renderProgramSummaryFromLocal() {
 }
 
 function renderProgramSummaryFromDashboard(programs) {
+  const visiblePrograms =
+    (programs || []).filter(
+      (item) =>
+        numberValue(item.meta) > 0
+    );
+
   $("program-summary").innerHTML =
-    programs.length
-      ? programs
+    visiblePrograms.length
+      ? visiblePrograms
           .map(
             (item) => `
               <div class="program-progress-row">
@@ -1022,7 +1043,13 @@ function renderActivityBreakdownTable(rows) {
     return;
   }
 
-  container.innerHTML = rows.length
+  const visibleRows =
+    (rows || []).filter(
+      (row) =>
+        numberValue(row.meta) > 0
+    );
+
+  container.innerHTML = visibleRows.length
     ? `
         <div class="table-scroll">
           <table class="data-table">
@@ -1038,7 +1065,7 @@ function renderActivityBreakdownTable(rows) {
             </thead>
 
             <tbody>
-              ${rows
+              ${visibleRows
                 .map(
                   (row) => `
                     <tr>
@@ -1689,7 +1716,10 @@ function renderActivityForm(editingRow = null) {
             >
           </label>
 
-          <label>
+          <label
+            id="activity-school-wrap"
+            class="hidden"
+          >
             Centro educativo
             <input
               id="activity-school"
@@ -2184,8 +2214,14 @@ function setupPlaceTypeSelector() {
 
   select.addEventListener(
     "change",
-    updateOtherPlaceVisibility
+    () => {
+      updateOtherPlaceVisibility();
+      updateSchoolFieldVisibility();
+    }
   );
+
+  updateOtherPlaceVisibility();
+  updateSchoolFieldVisibility();
 }
 
 function updateOtherPlaceVisibility() {
@@ -2206,6 +2242,45 @@ function updateOtherPlaceVisibility() {
 
     if (!isOther) {
       $("activity-other-place").value = "";
+    }
+  }
+}
+
+
+function updateSchoolFieldVisibility() {
+  const placeType =
+    normalize(
+      $("activity-place-type")?.value
+    );
+
+  const educationalPlaceTypes = [
+    "CENTRO EDUCATIVO",
+    "ESCUELA",
+    "COLEGIO",
+    "UNIVERSIDAD",
+    "INSTITUCION EDUCATIVA"
+  ];
+
+  const showSchool =
+    educationalPlaceTypes.some(
+      (type) =>
+        placeType.includes(
+          normalize(type)
+        )
+    );
+
+  $("activity-school-wrap")
+    ?.classList.toggle(
+      "hidden",
+      !showSchool
+    );
+
+  if ($("activity-school")) {
+    $("activity-school").required =
+      showSchool;
+
+    if (!showSchool) {
+      $("activity-school").value = "";
     }
   }
 }
@@ -2504,6 +2579,8 @@ function fillActivityForm(row) {
     new Event("change")
   );
 
+  updateSchoolFieldVisibility();
+
   $("activity-other-place").value =
     row.otro_tipo_lugar || "";
 
@@ -2776,6 +2853,22 @@ async function submitActivity(event) {
     ) {
       errors.push(
         "Debe especificar el otro tipo de lugar."
+      );
+    }
+
+
+    const schoolFieldVisible =
+      !$("activity-school-wrap")
+        ?.classList.contains("hidden");
+
+    if (
+      schoolFieldVisible &&
+      !$("activity-school")
+        .value
+        .trim()
+    ) {
+      errors.push(
+        "Debe indicar el centro educativo."
       );
     }
 
