@@ -143,6 +143,13 @@ const state = {
   currentPage: "dashboard",
   dashboardDelegationFilter: "",
   dashboardActivityFilter: "",
+  nationalViewerFilters: {
+    region: "",
+    delegation: "",
+    program: "",
+    activity: "",
+    compliance: ""
+  },
   selectedInstitutions: []
 };
 
@@ -267,15 +274,24 @@ function toggleSidebar() {
 function buildNavigation() {
   const role = normalize(state.user?.role);
 
-  const items = [
-    {
-      id: "dashboard",
-      label: "Panel principal",
-      icon: "📊"
-    }
-  ];
+  const items =
+    isNationalViewerRole()
+      ? [
+          {
+            id: "dashboard",
+            label: "Panel Nacional",
+            icon: "🗺️"
+          }
+        ]
+      : [
+          {
+            id: "dashboard",
+            label: "Panel principal",
+            icon: "📊"
+          }
+        ];
 
-  if (role.includes("DELEG")) {
+  if (!isNationalViewerRole() && role.includes("DELEG")) {
     items.push(
       {
         id: "delegacion",
@@ -291,10 +307,13 @@ function buildNavigation() {
   }
 
   if (
-    role.includes("REGIONAL") ||
-    role.includes("COORDIN") ||
-    role === "NACIONAL" ||
-    role.includes("ADMIN")
+    !isNationalViewerRole() &&
+    (
+      role.includes("REGIONAL") ||
+      role.includes("COORDIN") ||
+      role === "NACIONAL" ||
+      role.includes("ADMIN")
+    )
   ) {
     items.push({
       id: "revision",
@@ -304,8 +323,11 @@ function buildNavigation() {
   }
 
   if (
-    role === "NACIONAL" ||
-    role.includes("ADMIN")
+    !isNationalViewerRole() &&
+    (
+      role === "NACIONAL" ||
+      role.includes("ADMIN")
+    )
   ) {
     items.push({
       id: "nacional",
@@ -314,7 +336,10 @@ function buildNavigation() {
     });
   }
 
-  if (role.includes("ADMIN")) {
+  if (
+    !isNationalViewerRole() &&
+    role.includes("ADMIN")
+  ) {
     items.push({
       id: "usuarios",
       label: "Usuarios",
@@ -350,6 +375,12 @@ function buildNavigation() {
       );
     });
   });
+
+  if (isNationalViewerRole()) {
+    state.currentPage = "dashboard";
+    $("page-title").textContent =
+      "Panel Nacional";
+  }
 }
 
 /* =========================================================
@@ -898,6 +929,16 @@ function isNationalCoordinatorRole() {
   return getCurrentRole().includes("COORDIN");
 }
 
+function isNationalViewerRole() {
+  const role =
+    getCurrentRole();
+
+  return (
+    role.includes("VISOR") &&
+    role.includes("NACIONAL")
+  );
+}
+
 function workflowLabel(row) {
   if (isHistorical(row)) {
     return "Revisado";
@@ -964,12 +1005,886 @@ function workflowLabel(row) {
 ========================================================= */
 
 function renderDashboard() {
+  if (isNationalViewerRole()) {
+    renderNationalViewerDashboard();
+    return;
+  }
+
   if (isDelegationRole()) {
     renderDelegationDashboard();
     return;
   }
 
   renderConsolidatedDashboard();
+}
+
+function renderNationalViewerDashboard() {
+  toggleBreakdownPanel(false);
+  removeDelegationOverviewPanel();
+  configureNationalViewerLayout();
+  renderNationalViewerControls();
+  applyNationalViewerFilters();
+}
+
+function removeDelegationOverviewPanel() {
+  $("delegation-overview-panel")
+    ?.remove();
+}
+
+function configureNationalViewerLayout() {
+  const programPanel =
+    $("program-summary")
+      ?.closest(".panel-card");
+
+  const statusPanel =
+    $("status-summary")
+      ?.closest(".panel-card");
+
+  programPanel?.classList.add(
+    "hidden"
+  );
+
+  statusPanel?.classList.add(
+    "hidden"
+  );
+
+  const mapPanel =
+    $("dashboard-map")
+      ?.closest(".panel-card");
+
+  if (mapPanel) {
+    const heading =
+      mapPanel.querySelector("h3");
+
+    if (heading) {
+      heading.textContent =
+        "Mapa nacional de cumplimiento";
+    }
+  }
+}
+
+function getNationalViewerControlsPanel() {
+  let panel =
+    $("national-viewer-controls");
+
+  if (panel) {
+    return panel;
+  }
+
+  const mapPanel =
+    $("dashboard-map")
+      ?.closest(".panel-card");
+
+  if (!mapPanel) {
+    return null;
+  }
+
+  panel =
+    document.createElement(
+      "article"
+    );
+
+  panel.id =
+    "national-viewer-controls";
+
+  panel.className =
+    "panel-card";
+
+  mapPanel.insertAdjacentElement(
+    "beforebegin",
+    panel
+  );
+
+  return panel;
+}
+
+function getNationalViewerTablePanel() {
+  let panel =
+    $("national-viewer-table-panel");
+
+  if (panel) {
+    return panel;
+  }
+
+  const mapPanel =
+    $("dashboard-map")
+      ?.closest(".panel-card");
+
+  if (!mapPanel) {
+    return null;
+  }
+
+  panel =
+    document.createElement(
+      "article"
+    );
+
+  panel.id =
+    "national-viewer-table-panel";
+
+  panel.className =
+    "panel-card";
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <span class="panel-kicker">
+          Consulta nacional
+        </span>
+
+        <h3>
+          Resumen por delegación
+        </h3>
+      </div>
+    </div>
+
+    <div id="national-viewer-table"></div>
+  `;
+
+  mapPanel.insertAdjacentElement(
+    "afterend",
+    panel
+  );
+
+  return panel;
+}
+
+function getNationalViewerBaseRows() {
+  return getRows().filter(
+    (row) =>
+      isVisibleActivityRow(row)
+  );
+}
+
+function renderNationalViewerControls() {
+  const panel =
+    getNationalViewerControlsPanel();
+
+  if (!panel) {
+    return;
+  }
+
+  const rows =
+    getNationalViewerBaseRows();
+
+  const regions = [
+    ...new Set(
+      rows
+        .map(
+          (row) =>
+            String(
+              row.direccion_regional ||
+              ""
+            ).trim()
+        )
+        .filter(Boolean)
+    )
+  ].sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <div>
+        <span class="panel-kicker">
+          Visor Nacional
+        </span>
+
+        <h3>
+          Consulta integral PUMI
+        </h3>
+      </div>
+
+      <button
+        id="btn-national-viewer-clear"
+        class="btn btn-secondary"
+        type="button"
+      >
+        Limpiar filtros
+      </button>
+    </div>
+
+    <div class="national-viewer-filter-grid">
+      <label>
+        Dirección Regional
+        <select id="national-filter-region"></select>
+      </label>
+
+      <label>
+        Delegación
+        <select id="national-filter-delegation"></select>
+      </label>
+
+      <label>
+        Programa
+        <select id="national-filter-program"></select>
+      </label>
+
+      <label>
+        Actividad
+        <select id="national-filter-activity"></select>
+      </label>
+
+      <label>
+        Cumplimiento
+        <select id="national-filter-compliance">
+          <option value="">Todos</option>
+          <option value="CUMPLE">Cumple: 50% o más</option>
+          <option value="EN RIESGO">En riesgo: 25% a 49.99%</option>
+          <option value="CRITICO">Crítico: menor al 25%</option>
+        </select>
+      </label>
+    </div>
+  `;
+
+  fillSelect(
+    $("national-filter-region"),
+    regions,
+    true
+  );
+
+  refreshNationalViewerDependentFilters();
+
+  setSelectValue(
+    $("national-filter-region"),
+    state.nationalViewerFilters.region
+  );
+
+  setSelectValue(
+    $("national-filter-delegation"),
+    state.nationalViewerFilters.delegation
+  );
+
+  setSelectValue(
+    $("national-filter-program"),
+    state.nationalViewerFilters.program
+  );
+
+  setSelectValue(
+    $("national-filter-activity"),
+    state.nationalViewerFilters.activity
+  );
+
+  if ($("national-filter-compliance")) {
+    $("national-filter-compliance").value =
+      state.nationalViewerFilters.compliance ||
+      "";
+  }
+
+  [
+    "national-filter-region",
+    "national-filter-delegation",
+    "national-filter-program",
+    "national-filter-activity",
+    "national-filter-compliance"
+  ].forEach((id) => {
+    $(id)?.addEventListener(
+      "change",
+      () => {
+        captureNationalViewerFilters();
+
+        if (
+          id !==
+          "national-filter-compliance"
+        ) {
+          refreshNationalViewerDependentFilters();
+        }
+
+        applyNationalViewerFilters();
+      }
+    );
+  });
+
+  $("btn-national-viewer-clear")
+    ?.addEventListener(
+      "click",
+      () => {
+        state.nationalViewerFilters = {
+          region: "",
+          delegation: "",
+          program: "",
+          activity: "",
+          compliance: ""
+        };
+
+        renderNationalViewerControls();
+        applyNationalViewerFilters();
+      }
+    );
+}
+
+function captureNationalViewerFilters() {
+  state.nationalViewerFilters = {
+    region:
+      $("national-filter-region")
+        ?.value || "",
+
+    delegation:
+      $("national-filter-delegation")
+        ?.value || "",
+
+    program:
+      $("national-filter-program")
+        ?.value || "",
+
+    activity:
+      $("national-filter-activity")
+        ?.value || "",
+
+    compliance:
+      $("national-filter-compliance")
+        ?.value || ""
+  };
+}
+
+function refreshNationalViewerDependentFilters() {
+  const filters =
+    state.nationalViewerFilters;
+
+  const rows =
+    getNationalViewerBaseRows();
+
+  const filteredByRegion =
+    rows.filter(
+      (row) =>
+        !filters.region ||
+        normalize(
+          row.direccion_regional
+        ) ===
+          normalize(
+            filters.region
+          )
+    );
+
+  const delegations = [
+    ...new Set(
+      filteredByRegion
+        .map(
+          (row) =>
+            String(
+              row.delegacion || ""
+            ).trim()
+        )
+        .filter(Boolean)
+    )
+  ];
+
+  const filteredByDelegation =
+    filteredByRegion.filter(
+      (row) =>
+        !filters.delegation ||
+        normalize(row.delegacion) ===
+          normalize(
+            filters.delegation
+          )
+    );
+
+  const programs = [
+    ...new Set(
+      filteredByDelegation
+        .map(
+          (row) =>
+            String(
+              row.programa || ""
+            ).trim()
+        )
+        .filter(Boolean)
+    )
+  ];
+
+  const filteredByProgram =
+    filteredByDelegation.filter(
+      (row) =>
+        !filters.program ||
+        normalize(row.programa) ===
+          normalize(
+            filters.program
+          )
+    );
+
+  const activities = [
+    ...new Set(
+      filteredByProgram
+        .map(
+          (row) =>
+            String(
+              row.actividad || ""
+            ).trim()
+        )
+        .filter(Boolean)
+    )
+  ];
+
+  fillSelect(
+    $("national-filter-delegation"),
+    delegations,
+    true
+  );
+
+  fillSelect(
+    $("national-filter-program"),
+    programs,
+    true
+  );
+
+  fillSelect(
+    $("national-filter-activity"),
+    activities,
+    true
+  );
+
+  setSelectValue(
+    $("national-filter-delegation"),
+    filters.delegation
+  );
+
+  setSelectValue(
+    $("national-filter-program"),
+    filters.program
+  );
+
+  setSelectValue(
+    $("national-filter-activity"),
+    filters.activity
+  );
+}
+
+function getNationalViewerFilteredFeatures() {
+  const filters =
+    state.nationalViewerFilters;
+
+  return filterVisibleActivityFeatures(
+    state.actividades
+  ).filter(
+    (feature) => {
+      const row =
+        feature.attributes || {};
+
+      if (
+        filters.region &&
+        normalize(
+          row.direccion_regional
+        ) !==
+          normalize(filters.region)
+      ) {
+        return false;
+      }
+
+      if (
+        filters.delegation &&
+        normalize(row.delegacion) !==
+          normalize(filters.delegation)
+      ) {
+        return false;
+      }
+
+      if (
+        filters.program &&
+        normalize(row.programa) !==
+          normalize(filters.program)
+      ) {
+        return false;
+      }
+
+      if (
+        filters.activity &&
+        normalize(row.actividad) !==
+          normalize(filters.activity)
+      ) {
+        return false;
+      }
+
+      return true;
+    }
+  );
+}
+
+function getComplianceStatus(
+  meta,
+  advance
+) {
+  const safeMeta =
+    numberValue(meta);
+
+  const percentage =
+    safeMeta > 0
+      ? numberValue(advance) /
+        safeMeta
+      : 0;
+
+  if (percentage >= 0.5) {
+    return "CUMPLE";
+  }
+
+  if (percentage >= 0.25) {
+    return "EN RIESGO";
+  }
+
+  return "CRITICO";
+}
+
+function getComplianceLabel(status) {
+  const labels = {
+    CUMPLE: "Cumple",
+    "EN RIESGO": "En riesgo",
+    CRITICO: "Crítico"
+  };
+
+  return labels[
+    normalize(status)
+  ] || "Crítico";
+}
+
+function buildNationalViewerDelegationRows(
+  features
+) {
+  return buildDelegationMapGroups(
+    features
+  )
+    .map((group) => {
+      const meta =
+        group.activities.reduce(
+          (total, item) =>
+            total +
+            numberValue(item.meta),
+          0
+        );
+
+      const advance =
+        group.activities.reduce(
+          (total, item) =>
+            total +
+            Math.min(
+              numberValue(item.avance),
+              numberValue(item.meta)
+            ),
+          0
+        );
+
+      const pending =
+        Math.max(
+          meta - advance,
+          0
+        );
+
+      const percentage =
+        meta > 0
+          ? advance / meta
+          : 0;
+
+      const status =
+        getComplianceStatus(
+          meta,
+          advance
+        );
+
+      return {
+        direccion_regional:
+          group.direccion_regional,
+
+        delegacion:
+          group.delegacion,
+
+        actividades:
+          group.activities.length,
+
+        meta,
+
+        avance:
+          advance,
+
+        pendiente:
+          pending,
+
+        porcentaje:
+          percentage,
+
+        estado:
+          getComplianceLabel(
+            status
+          ),
+
+        estado_codigo:
+          status
+      };
+    })
+    .filter(
+      (row) =>
+        !state.nationalViewerFilters
+          .compliance ||
+        normalize(
+          row.estado_codigo
+        ) ===
+          normalize(
+            state.nationalViewerFilters
+              .compliance
+          )
+    )
+    .sort(
+      (a, b) => {
+        const regionComparison =
+          a.direccion_regional
+            .localeCompare(
+              b.direccion_regional,
+              "es"
+            );
+
+        if (regionComparison !== 0) {
+          return regionComparison;
+        }
+
+        return a.delegacion
+          .localeCompare(
+            b.delegacion,
+            "es"
+          );
+      }
+    );
+}
+
+function applyNationalViewerFilters() {
+  const baseFeatures =
+    getNationalViewerFilteredFeatures();
+
+  const delegationRows =
+    buildNationalViewerDelegationRows(
+      baseFeatures
+    );
+
+  const allowedDelegations =
+    new Set(
+      delegationRows.map(
+        (row) =>
+          normalize(row.delegacion)
+      )
+    );
+
+  const visibleFeatures =
+    baseFeatures.filter(
+      (feature) =>
+        allowedDelegations.has(
+          normalize(
+            feature.attributes
+              ?.delegacion
+          )
+        )
+    );
+
+  renderNationalViewerKpis(
+    delegationRows,
+    visibleFeatures
+  );
+
+  renderMap(
+    visibleFeatures,
+    {
+      colorByCompliance: true
+    }
+  );
+
+  renderNationalViewerTable(
+    delegationRows
+  );
+}
+
+function renderNationalViewerKpis(
+  delegationRows,
+  visibleFeatures
+) {
+  const meta =
+    sumBy(
+      delegationRows,
+      "meta"
+    );
+
+  const advance =
+    sumBy(
+      delegationRows,
+      "avance"
+    );
+
+  const pending =
+    Math.max(
+      meta - advance,
+      0
+    );
+
+  const percentage =
+    meta > 0
+      ? (advance / meta) * 100
+      : 0;
+
+  const regions =
+    new Set(
+      delegationRows.map(
+        (row) =>
+          normalize(
+            row.direccion_regional
+          )
+      )
+    ).size;
+
+  const programs =
+    new Set(
+      visibleFeatures
+        .map(
+          (feature) =>
+            normalize(
+              feature.attributes
+                ?.programa
+            )
+        )
+        .filter(Boolean)
+    ).size;
+
+  const activities =
+    new Set(
+      visibleFeatures
+        .map(
+          (feature) =>
+            `${normalize(
+              feature.attributes
+                ?.programa
+            )}|||${normalize(
+              feature.attributes
+                ?.actividad
+            )}`
+        )
+        .filter(Boolean)
+    ).size;
+
+  renderKpiCards([
+    ["Meta nacional", meta],
+    ["Avance", advance],
+    ["Pendiente", pending],
+    [
+      "% cumplimiento",
+      `${percentage.toFixed(1)}%`
+    ],
+    ["Regiones", regions],
+    [
+      "Delegaciones",
+      delegationRows.length
+    ],
+    ["Programas", programs],
+    ["Actividades", activities]
+  ]);
+}
+
+function renderNationalViewerTable(rows) {
+  getNationalViewerTablePanel();
+
+  const container =
+    $("national-viewer-table");
+
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML =
+    rows.length
+      ? `
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>
+                    Dirección Regional
+                  </th>
+
+                  <th>
+                    Delegación
+                  </th>
+
+                  <th>
+                    Actividades
+                  </th>
+
+                  <th>Meta</th>
+                  <th>Avance</th>
+                  <th>Pendiente</th>
+                  <th>%</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                ${rows
+                  .map(
+                    (row) => `
+                      <tr>
+                        <td>
+                          ${escapeHtml(
+                            row.direccion_regional
+                          )}
+                        </td>
+
+                        <td>
+                          <strong>
+                            ${escapeHtml(
+                              row.delegacion
+                            )}
+                          </strong>
+                        </td>
+
+                        <td>
+                          ${formatNumber(
+                            row.actividades
+                          )}
+                        </td>
+
+                        <td>
+                          ${formatNumber(
+                            row.meta
+                          )}
+                        </td>
+
+                        <td>
+                          ${formatNumber(
+                            row.avance
+                          )}
+                        </td>
+
+                        <td>
+                          ${formatNumber(
+                            row.pendiente
+                          )}
+                        </td>
+
+                        <td>
+                          <strong>
+                            ${(
+                              numberValue(
+                                row.porcentaje
+                              ) * 100
+                            ).toFixed(1)}%
+                          </strong>
+                        </td>
+
+                        <td>
+                          <span class="national-compliance-badge national-compliance-${normalize(
+                            row.estado_codigo
+                          )
+                            .toLowerCase()
+                            .replace(/\s+/g, "-")}">
+                            ${escapeHtml(
+                              row.estado
+                            )}
+                          </span>
+                        </td>
+                      </tr>
+                    `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        `
+      : `
+          <div class="module-empty">
+            No hay información para los filtros seleccionados.
+          </div>
+        `;
 }
 
 function renderDelegationDashboard() {
@@ -5040,7 +5955,7 @@ function closeNotifications() {
    MAPAS - PIN TIPO VIÑETA + UBICACIÓN APROXIMADA HISTÓRICA
 ========================================================= */
 
-function renderMap(features) {
+function renderMap(features, options = {}) {
   const container =
     $("dashboard-map");
 
@@ -5101,11 +6016,17 @@ function renderMap(features) {
           }
 
           const color =
-            regionColors.get(
-              normalize(
-                group.direccion_regional
-              )
-            ) || "#0b3b8f";
+            options.colorByCompliance
+              ? getComplianceMarkerColor(
+                  group
+                )
+              : (
+                  regionColors.get(
+                    normalize(
+                      group.direccion_regional
+                    )
+                  ) || "#0b3b8f"
+                );
 
           layer.add(
             new Graphic({
@@ -5200,7 +6121,10 @@ function renderMap(features) {
       }
 
       renderMapLegend(
-        regionColors
+        regionColors,
+        Boolean(
+          options.colorByCompliance
+        )
       );
     }
   );
@@ -6095,6 +7019,45 @@ function renderReviewMap(row) {
   );
 }
 
+function getComplianceMarkerColor(group) {
+  const meta =
+    (group.activities || [])
+      .reduce(
+        (total, item) =>
+          total +
+          numberValue(item.meta),
+        0
+      );
+
+  const advance =
+    (group.activities || [])
+      .reduce(
+        (total, item) =>
+          total +
+          Math.min(
+            numberValue(item.avance),
+            numberValue(item.meta)
+          ),
+        0
+      );
+
+  const status =
+    getComplianceStatus(
+      meta,
+      advance
+    );
+
+  if (status === "CUMPLE") {
+    return "#16a34a";
+  }
+
+  if (status === "EN RIESGO") {
+    return "#f59e0b";
+  }
+
+  return "#dc2626";
+}
+
 function buildRegionColorMap(groups) {
   const regions = [
     ...new Set(
@@ -6215,7 +7178,7 @@ function createMarkerSvg(color) {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-function renderMapLegend(colorMap) {
+function renderMapLegend(colorMap, complianceMode = false) {
   let legend =
     $("dashboard-map-legend");
 
@@ -6240,6 +7203,7 @@ function renderMapLegend(colorMap) {
 
   if (
     !legend ||
+    complianceMode ||
     isDelegationRole() ||
     colorMap.size <= 1
   ) {
@@ -6806,6 +7770,64 @@ function injectVisualEnhancements() {
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18);
     }
 
+
+    .national-viewer-filter-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(5, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .national-viewer-filter-grid label {
+      display: grid;
+      gap: 8px;
+      color: #102a56;
+      font-weight: 800;
+    }
+
+    .national-viewer-filter-grid select {
+      width: 100%;
+      min-height: 56px;
+      padding: 0 15px;
+      border: 1px solid #d6e0ee;
+      border-radius: 15px;
+      background: #ffffff;
+      color: #12233f;
+      font: inherit;
+      font-weight: 700;
+      outline: none;
+    }
+
+    .national-viewer-filter-grid select:focus {
+      border-color: #174ea6;
+      box-shadow:
+        0 0 0 4px
+        rgba(23, 78, 166, 0.10);
+    }
+
+    .national-compliance-badge {
+      display: inline-flex;
+      justify-content: center;
+      min-width: 92px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      color: #ffffff;
+      font-size: 0.82rem;
+      font-weight: 900;
+    }
+
+    .national-compliance-cumple {
+      background: #16a34a;
+    }
+
+    .national-compliance-en-riesgo {
+      background: #f59e0b;
+    }
+
+    .national-compliance-critico {
+      background: #dc2626;
+    }
+
     @media (max-width: 1100px) {
       .participant-summary-card {
         grid-template-columns: 1fr;
@@ -6821,7 +7843,8 @@ function injectVisualEnhancements() {
 
       .pumi-mini-kpi-grid,
       .pumi-review-filters,
-      .pumi-dashboard-filter-grid {
+      .pumi-dashboard-filter-grid,
+      .national-viewer-filter-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
@@ -6843,6 +7866,7 @@ function injectVisualEnhancements() {
       .pumi-mini-kpi-grid,
       .pumi-review-filters,
       .pumi-dashboard-filter-grid,
+      .national-viewer-filter-grid,
       .review-actions-large,
       .map-legend-items {
         grid-template-columns: 1fr;
