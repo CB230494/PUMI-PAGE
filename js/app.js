@@ -575,12 +575,20 @@ function hasPositiveMetaForActivity(program, activity) {
 }
 
 function isVisibleActivityRow(row = {}) {
+  const recordStatus =
+    getCatalogFieldValue(
+      row,
+      "estado_registro",
+      "Estado_Registro",
+      "ESTADO_REGISTRO"
+    );
+
   return (
-    normalize(row.estado_registro) !==
+    normalize(recordStatus) !==
       "ELIMINADO" &&
     hasPositiveMetaForActivity(
-      row.programa,
-      row.actividad
+      getActivityProgram(row),
+      getActivityName(row)
     )
   );
 }
@@ -635,9 +643,7 @@ function buildVisibleDashboard(sourceDashboard = {}) {
 
   for (const row of rows) {
     const delegation =
-      String(
-        row.delegacion || ""
-      ).trim();
+      getActivityDelegation(row);
 
     if (!delegation) {
       continue;
@@ -654,10 +660,7 @@ function buildVisibleDashboard(sourceDashboard = {}) {
             delegation,
 
           direccion_regional:
-            String(
-              row.direccion_regional ||
-              ""
-            ).trim(),
+            getActivityRegion(row),
 
           registros:
             0,
@@ -828,6 +831,117 @@ function getCatalogFieldValue(row, ...names) {
   }
 
   return "";
+}
+
+function getActivityDelegation(row = {}) {
+  return getCatalogFieldValue(
+    row,
+    "delegacion",
+    "Delegacion",
+    "DELEGACION",
+    "delegacion_policial",
+    "Delegacion_Policial",
+    "DELEGACION_POLICIAL",
+    "nombre_delegacion",
+    "Nombre_Delegacion",
+    "NOMBRE_DELEGACION"
+  );
+}
+
+function getActivityRegion(row = {}, useCatalogFallback = true) {
+  const directRegion =
+    getCatalogFieldValue(
+      row,
+      "direccion_regional",
+      "Direccion_Regional",
+      "DIRECCION_REGIONAL",
+      "direccionRegional",
+      "DireccionRegional",
+      "region",
+      "Region",
+      "REGION",
+      "regional",
+      "Regional",
+      "REGIONAL",
+      "nombre_region",
+      "Nombre_Region",
+      "NOMBRE_REGION"
+    );
+
+  if (directRegion || !useCatalogFallback) {
+    return directRegion;
+  }
+
+  const delegation =
+    getActivityDelegation(row);
+
+  if (!delegation) {
+    return "";
+  }
+
+  for (
+    const feature
+    of state.delegaciones || []
+  ) {
+    const attributes =
+      feature.attributes || {};
+
+    const catalogDelegation =
+      getActivityDelegation(attributes) ||
+      getCatalogFieldValue(
+        attributes,
+        "nombre",
+        "Nombre",
+        "NOMBRE"
+      );
+
+    if (
+      !catalogDelegation ||
+      !sameTerritory(
+        catalogDelegation,
+        delegation
+      )
+    ) {
+      continue;
+    }
+
+    const catalogRegion =
+      getActivityRegion(
+        attributes,
+        false
+      );
+
+    if (catalogRegion) {
+      return catalogRegion;
+    }
+  }
+
+  return "";
+}
+
+function getActivityProgram(row = {}) {
+  return getCatalogFieldValue(
+    row,
+    "programa",
+    "Programa",
+    "PROGRAMA"
+  );
+}
+
+function getActivityName(row = {}) {
+  return getCatalogFieldValue(
+    row,
+    "actividad",
+    "Actividad",
+    "ACTIVIDAD"
+  );
+}
+
+function getRegionDelegationKey(
+  region,
+  delegation
+) {
+  return `${normalizeTerritory(region)}|||${normalizeTerritory(delegation)}`;
 }
 
 function getLocationCatalogRows() {
@@ -1210,17 +1324,14 @@ function getNationalTerritoryCatalogRows() {
 
         return {
           delegation:
-            String(
-              attributes.delegacion ||
-              ""
-            ).trim(),
+            getActivityDelegation(
+              attributes
+            ),
 
           region:
-            String(
-              attributes.direccion_regional ||
-              attributes.region ||
-              ""
-            ).trim()
+            getActivityRegion(
+              attributes
+            )
         };
       })
       .filter(
@@ -1560,7 +1671,7 @@ function refreshNationalViewerDependentFilters() {
       (row) =>
         !filters.region ||
         sameRegion(
-          row.direccion_regional,
+          getActivityRegion(row),
           filters.region
         )
     );
@@ -1570,7 +1681,7 @@ function refreshNationalViewerDependentFilters() {
       (row) =>
         !filters.delegation ||
         sameTerritory(
-          row.delegacion,
+          getActivityDelegation(row),
           filters.delegation
         )
     );
@@ -1580,9 +1691,7 @@ function refreshNationalViewerDependentFilters() {
       filteredByDelegation
         .map(
           (row) =>
-            String(
-              row.programa || ""
-            ).trim()
+            getActivityProgram(row)
         )
         .filter(Boolean)
     )
@@ -1600,7 +1709,9 @@ function refreshNationalViewerDependentFilters() {
     filteredByDelegation.filter(
       (row) =>
         !filters.program ||
-        normalize(row.programa) ===
+        normalize(
+          getActivityProgram(row)
+        ) ===
           normalize(
             filters.program
           )
@@ -1611,9 +1722,7 @@ function refreshNationalViewerDependentFilters() {
       filteredByProgram
         .map(
           (row) =>
-            String(
-              row.actividad || ""
-            ).trim()
+            getActivityName(row)
         )
         .filter(Boolean)
     )
@@ -1687,7 +1796,7 @@ function getNationalViewerFilteredFeatures() {
       if (
         filters.region &&
         !sameRegion(
-          row.direccion_regional,
+          getActivityRegion(row),
           filters.region
         )
       ) {
@@ -1697,7 +1806,7 @@ function getNationalViewerFilteredFeatures() {
       if (
         filters.delegation &&
         !sameTerritory(
-          row.delegacion,
+          getActivityDelegation(row),
           filters.delegation
         )
       ) {
@@ -1706,7 +1815,9 @@ function getNationalViewerFilteredFeatures() {
 
       if (
         filters.program &&
-        normalize(row.programa) !==
+        normalize(
+          getActivityProgram(row)
+        ) !==
           normalize(filters.program)
       ) {
         return false;
@@ -1714,7 +1825,9 @@ function getNationalViewerFilteredFeatures() {
 
       if (
         filters.activity &&
-        normalize(row.actividad) !==
+        normalize(
+          getActivityName(row)
+        ) !==
           normalize(filters.activity)
       ) {
         return false;
@@ -1877,23 +1990,30 @@ function applyNationalViewerFilters() {
       baseFeatures
     );
 
-  const allowedDelegations =
+  const allowedTerritories =
     new Set(
       delegationRows.map(
         (row) =>
-          normalize(row.delegacion)
+          getRegionDelegationKey(
+            row.direccion_regional,
+            row.delegacion
+          )
       )
     );
 
   const visibleFeatures =
     baseFeatures.filter(
-      (feature) =>
-        allowedDelegations.has(
-          normalize(
-            feature.attributes
-              ?.delegacion
+      (feature) => {
+        const row =
+          feature.attributes || {};
+
+        return allowedTerritories.has(
+          getRegionDelegationKey(
+            getActivityRegion(row),
+            getActivityDelegation(row)
           )
-        )
+        );
+      }
     );
 
   renderNationalViewerKpis(
@@ -2017,16 +2137,14 @@ function getDelegationCatalogTerritory() {
           feature.attributes || {};
 
         const region =
-          String(
-            attributes.direccion_regional ||
-            ""
-          ).trim();
+          getActivityRegion(
+            attributes
+          );
 
         const delegation =
-          String(
-            attributes.delegacion ||
-            ""
-          ).trim();
+          getActivityDelegation(
+            attributes
+          );
 
         if (
           filters.region &&
@@ -2101,8 +2219,9 @@ function renderNationalViewerKpis(
         .map(
           (feature) =>
             normalize(
-              feature.attributes
-                ?.programa
+              getActivityProgram(
+                feature.attributes || {}
+              )
             )
         )
         .filter(Boolean)
@@ -2114,11 +2233,13 @@ function renderNationalViewerKpis(
         .map(
           (feature) =>
             `${normalize(
-              feature.attributes
-                ?.programa
+              getActivityProgram(
+                feature.attributes || {}
+              )
             )}|||${normalize(
-              feature.attributes
-                ?.actividad
+              getActivityName(
+                feature.attributes || {}
+              )
             )}`
         )
         .filter(Boolean)
@@ -6519,13 +6640,18 @@ function buildDelegationMapGroups(features) {
     }
 
     const delegation =
-      String(
-        row.delegacion ||
-        "Sin delegación"
-      ).trim();
+      getActivityDelegation(row) ||
+      "Sin delegación";
+
+    const region =
+      getActivityRegion(row) ||
+      "Sin región";
 
     const delegationKey =
-      normalize(delegation);
+      getRegionDelegationKey(
+        region,
+        delegation
+      );
 
     if (!grouped.has(delegationKey)) {
       grouped.set(
@@ -6535,11 +6661,7 @@ function buildDelegationMapGroups(features) {
             delegation,
 
           direccion_regional:
-            String(
-              row.direccion_regional ||
-              row.region ||
-              "Sin región"
-            ).trim(),
+            region,
 
           features: [],
 
@@ -6555,16 +6677,12 @@ function buildDelegationMapGroups(features) {
     group.features.push(feature);
 
     const program =
-      String(
-        row.programa ||
-        "Sin programa"
-      ).trim();
+      getActivityProgram(row) ||
+      "Sin programa";
 
     const activity =
-      String(
-        row.actividad ||
-        "Sin actividad"
-      ).trim();
+      getActivityName(row) ||
+      "Sin actividad";
 
     if (
       normalize(activity) ===
@@ -7659,11 +7777,7 @@ function renderMapLegend(colorMap, complianceMode = false) {
 
   for (const row of getRows()) {
     const region =
-      String(
-        row.direccion_regional ||
-        row.region ||
-        ""
-      ).trim();
+      getActivityRegion(row);
 
     if (region) {
       regionNames.set(
@@ -8500,7 +8614,15 @@ function getRegionNumber(value) {
 function getRegionName(value) {
   return normalizeTerritory(value)
     .replace(
-      /DIRECCION\s+REGIONAL/g,
+      /\bDIRECCION\b/g,
+      " "
+    )
+    .replace(
+      /\bREGIONAL\b/g,
+      " "
+    )
+    .replace(
+      /\bREGION\b/g,
       " "
     )
     .replace(
