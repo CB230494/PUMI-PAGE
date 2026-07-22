@@ -575,20 +575,12 @@ function hasPositiveMetaForActivity(program, activity) {
 }
 
 function isVisibleActivityRow(row = {}) {
-  const recordStatus =
-    getCatalogFieldValue(
-      row,
-      "estado_registro",
-      "Estado_Registro",
-      "ESTADO_REGISTRO"
-    );
-
   return (
-    normalize(recordStatus) !==
+    normalize(row.estado_registro) !==
       "ELIMINADO" &&
     hasPositiveMetaForActivity(
-      getActivityProgram(row),
-      getActivityName(row)
+      row.programa,
+      row.actividad
     )
   );
 }
@@ -643,7 +635,9 @@ function buildVisibleDashboard(sourceDashboard = {}) {
 
   for (const row of rows) {
     const delegation =
-      getActivityDelegation(row);
+      String(
+        row.delegacion || ""
+      ).trim();
 
     if (!delegation) {
       continue;
@@ -660,7 +654,10 @@ function buildVisibleDashboard(sourceDashboard = {}) {
             delegation,
 
           direccion_regional:
-            getActivityRegion(row),
+            String(
+              row.direccion_regional ||
+              ""
+            ).trim(),
 
           registros:
             0,
@@ -831,117 +828,6 @@ function getCatalogFieldValue(row, ...names) {
   }
 
   return "";
-}
-
-function getActivityDelegation(row = {}) {
-  return getCatalogFieldValue(
-    row,
-    "delegacion",
-    "Delegacion",
-    "DELEGACION",
-    "delegacion_policial",
-    "Delegacion_Policial",
-    "DELEGACION_POLICIAL",
-    "nombre_delegacion",
-    "Nombre_Delegacion",
-    "NOMBRE_DELEGACION"
-  );
-}
-
-function getActivityRegion(row = {}, useCatalogFallback = true) {
-  const directRegion =
-    getCatalogFieldValue(
-      row,
-      "direccion_regional",
-      "Direccion_Regional",
-      "DIRECCION_REGIONAL",
-      "direccionRegional",
-      "DireccionRegional",
-      "region",
-      "Region",
-      "REGION",
-      "regional",
-      "Regional",
-      "REGIONAL",
-      "nombre_region",
-      "Nombre_Region",
-      "NOMBRE_REGION"
-    );
-
-  if (directRegion || !useCatalogFallback) {
-    return directRegion;
-  }
-
-  const delegation =
-    getActivityDelegation(row);
-
-  if (!delegation) {
-    return "";
-  }
-
-  for (
-    const feature
-    of state.delegaciones || []
-  ) {
-    const attributes =
-      feature.attributes || {};
-
-    const catalogDelegation =
-      getActivityDelegation(attributes) ||
-      getCatalogFieldValue(
-        attributes,
-        "nombre",
-        "Nombre",
-        "NOMBRE"
-      );
-
-    if (
-      !catalogDelegation ||
-      !sameTerritory(
-        catalogDelegation,
-        delegation
-      )
-    ) {
-      continue;
-    }
-
-    const catalogRegion =
-      getActivityRegion(
-        attributes,
-        false
-      );
-
-    if (catalogRegion) {
-      return catalogRegion;
-    }
-  }
-
-  return "";
-}
-
-function getActivityProgram(row = {}) {
-  return getCatalogFieldValue(
-    row,
-    "programa",
-    "Programa",
-    "PROGRAMA"
-  );
-}
-
-function getActivityName(row = {}) {
-  return getCatalogFieldValue(
-    row,
-    "actividad",
-    "Actividad",
-    "ACTIVIDAD"
-  );
-}
-
-function getRegionDelegationKey(
-  region,
-  delegation
-) {
-  return `${getRegionIdentity(region)}|||${normalizeDelegationTerritory(delegation)}`;
 }
 
 function getLocationCatalogRows() {
@@ -1270,6 +1156,218 @@ function getNationalViewerBaseRows() {
   );
 }
 
+/*
+ * Resuelve la Dirección Regional real de cada actividad.
+ * Los registros históricos pueden traerla como direccion_regional,
+ * region, codigo_region (DR2, DR3, etc.) o únicamente mediante la
+ * delegación. Se usa la capa PUMI_DELEGACIONES como catálogo maestro.
+ */
+function getActivityDelegation(row = {}) {
+  return getCatalogFieldValue(
+    row,
+    "delegacion",
+    "Delegacion",
+    "Delegación",
+    "DELEGACION",
+    "nombre_delegacion",
+    "NOMBRE_DELEGACION"
+  );
+}
+
+function getDirectActivityRegion(row = {}) {
+  return getCatalogFieldValue(
+    row,
+    "direccion_regional",
+    "Direccion_Regional",
+    "Dirección regional",
+    "DIRECCION_REGIONAL",
+    "direccionRegional",
+    "region",
+    "Region",
+    "REGION",
+    "nombre_region",
+    "NOMBRE_REGION"
+  );
+}
+
+function getActivityRegionCode(row = {}) {
+  return getCatalogFieldValue(
+    row,
+    "codigo_region",
+    "Código región",
+    "Codigo region",
+    "CODIGO_REGION",
+    "codigo_regional",
+    "CODIGO_REGIONAL",
+    "cod_region",
+    "COD_REGION"
+  );
+}
+
+function getRegionFromDelegationCatalog(delegation = "") {
+  const cleanDelegation = String(delegation || "").trim();
+
+  if (!cleanDelegation) {
+    return "";
+  }
+
+  const match = (state.delegaciones || [])
+    .map((feature) => feature.attributes || {})
+    .find((attributes) => {
+      const catalogDelegation = getCatalogFieldValue(
+        attributes,
+        "delegacion",
+        "Delegacion",
+        "Delegación",
+        "DELEGACION",
+        "nombre_delegacion",
+        "NOMBRE_DELEGACION",
+        "nombre",
+        "Nombre",
+        "NOMBRE"
+      );
+
+      return sameTerritory(
+        catalogDelegation,
+        cleanDelegation
+      );
+    });
+
+  if (!match) {
+    return "";
+  }
+
+  return getCatalogFieldValue(
+    match,
+    "direccion_regional",
+    "Direccion_Regional",
+    "Dirección regional",
+    "DIRECCION_REGIONAL",
+    "direccionRegional",
+    "region",
+    "Region",
+    "REGION",
+    "nombre_region",
+    "NOMBRE_REGION"
+  );
+}
+
+function getRegionFromCode(regionCode = "") {
+  const compactCode = normalize(regionCode)
+    .replace(/[^A-Z0-9]/g, "");
+
+  const specialRegionNames = {
+    DR1C: "SAN JOSE CENTRAL",
+    DR1N: "SAN JOSE NORTE",
+    DR1S: "SAN JOSE SUR"
+  };
+
+  const specialName =
+    specialRegionNames[compactCode];
+
+  if (specialName) {
+    const exactRegion = (state.delegaciones || [])
+      .map((feature) => feature.attributes || {})
+      .map((attributes) =>
+        getCatalogFieldValue(
+          attributes,
+          "direccion_regional",
+          "Direccion_Regional",
+          "Dirección regional",
+          "DIRECCION_REGIONAL",
+          "direccionRegional",
+          "region",
+          "Region",
+          "REGION",
+          "nombre_region",
+          "NOMBRE_REGION"
+        )
+      )
+      .find((region) =>
+        normalizeTerritory(region).includes(
+          specialName
+        )
+      );
+
+    return exactRegion ||
+      `Dirección Regional 1 - ${specialName
+        .toLowerCase()
+        .replace(/\b\w/g, (letter) =>
+          letter.toUpperCase()
+        )}`;
+  }
+
+  const number = getRegionNumber(regionCode);
+
+  if (number === null) {
+    return "";
+  }
+
+  const matches = [
+    ...new Set(
+      (state.delegaciones || [])
+        .map((feature) => {
+          const attributes = feature.attributes || {};
+
+          return getCatalogFieldValue(
+            attributes,
+            "direccion_regional",
+            "Direccion_Regional",
+            "Dirección regional",
+            "DIRECCION_REGIONAL",
+            "direccionRegional",
+            "region",
+            "Region",
+            "REGION",
+            "nombre_region",
+            "NOMBRE_REGION"
+          );
+        })
+        .filter(Boolean)
+        .filter(
+          (region) =>
+            getRegionNumber(region) === number
+        )
+    )
+  ];
+
+  return matches.length === 1
+    ? matches[0]
+    : "";
+}
+
+function getActivityRegion(row = {}) {
+  const directRegion = getDirectActivityRegion(row);
+  const delegation = getActivityDelegation(row);
+  const catalogRegion = getRegionFromDelegationCatalog(delegation);
+  const regionCode = getActivityRegionCode(row);
+
+  if (directRegion) {
+    const directName = getRegionName(directRegion);
+
+    /* Un valor completo como "Dirección Regional 3 - Cartago"
+       tiene prioridad. Un código genérico como DR3 se completa
+       con el catálogo de delegaciones. */
+    if (directName) {
+      return directRegion;
+    }
+  }
+
+  if (catalogRegion) {
+    return catalogRegion;
+  }
+
+  if (directRegion) {
+    return getRegionFromCode(directRegion) || directRegion;
+  }
+
+  if (regionCode) {
+    return getRegionFromCode(regionCode) || regionCode;
+  }
+
+  return "";
+}
+
 function getNationalTerritoryCatalogRows() {
   const catalogRows =
     (state.delegaciones || [])
@@ -1324,14 +1422,13 @@ function getNationalTerritoryCatalogRows() {
 
         return {
           delegation:
-            getActivityDelegation(
-              attributes
-            ),
+            String(
+              attributes.delegacion ||
+              ""
+            ).trim(),
 
           region:
-            getActivityRegion(
-              attributes
-            )
+            getActivityRegion(attributes)
         };
       })
       .filter(
@@ -1350,10 +1447,7 @@ function getNationalTerritoryCatalogRows() {
     ...activityRows
   ].forEach((row) => {
     const key =
-      getRegionDelegationKey(
-        row.region,
-        row.delegation
-      );
+      `${normalize(row.region)}|||${normalize(row.delegation)}`;
 
     if (!combined.has(key)) {
       combined.set(
@@ -1385,7 +1479,9 @@ function getNationalRegionOptions() {
         getRegionNumber(region);
 
       const key =
-        getRegionIdentity(region);
+        number !== null
+          ? `REGION-${number}`
+          : getRegionName(region);
 
       const current =
         options.get(key);
@@ -1413,8 +1509,7 @@ function getNationalRegionOptions() {
 
     if (
       aNumber !== null &&
-      bNumber !== null &&
-      aNumber !== bNumber
+      bNumber !== null
     ) {
       return (
         aNumber -
@@ -1683,7 +1778,7 @@ function refreshNationalViewerDependentFilters() {
       (row) =>
         !filters.delegation ||
         sameTerritory(
-          getActivityDelegation(row),
+          row.delegacion,
           filters.delegation
         )
     );
@@ -1693,7 +1788,9 @@ function refreshNationalViewerDependentFilters() {
       filteredByDelegation
         .map(
           (row) =>
-            getActivityProgram(row)
+            String(
+              row.programa || ""
+            ).trim()
         )
         .filter(Boolean)
     )
@@ -1711,9 +1808,7 @@ function refreshNationalViewerDependentFilters() {
     filteredByDelegation.filter(
       (row) =>
         !filters.program ||
-        normalize(
-          getActivityProgram(row)
-        ) ===
+        normalize(row.programa) ===
           normalize(
             filters.program
           )
@@ -1724,7 +1819,9 @@ function refreshNationalViewerDependentFilters() {
       filteredByProgram
         .map(
           (row) =>
-            getActivityName(row)
+            String(
+              row.actividad || ""
+            ).trim()
         )
         .filter(Boolean)
     )
@@ -1808,7 +1905,7 @@ function getNationalViewerFilteredFeatures() {
       if (
         filters.delegation &&
         !sameTerritory(
-          getActivityDelegation(row),
+          row.delegacion,
           filters.delegation
         )
       ) {
@@ -1817,9 +1914,7 @@ function getNationalViewerFilteredFeatures() {
 
       if (
         filters.program &&
-        normalize(
-          getActivityProgram(row)
-        ) !==
+        normalize(row.programa) !==
           normalize(filters.program)
       ) {
         return false;
@@ -1827,9 +1922,7 @@ function getNationalViewerFilteredFeatures() {
 
       if (
         filters.activity &&
-        normalize(
-          getActivityName(row)
-        ) !==
+        normalize(row.actividad) !==
           normalize(filters.activity)
       ) {
         return false;
@@ -1992,30 +2085,23 @@ function applyNationalViewerFilters() {
       baseFeatures
     );
 
-  const allowedTerritories =
+  const allowedDelegations =
     new Set(
       delegationRows.map(
         (row) =>
-          getRegionDelegationKey(
-            row.direccion_regional,
-            row.delegacion
-          )
+          normalize(row.delegacion)
       )
     );
 
   const visibleFeatures =
     baseFeatures.filter(
-      (feature) => {
-        const row =
-          feature.attributes || {};
-
-        return allowedTerritories.has(
-          getRegionDelegationKey(
-            getActivityRegion(row),
-            getActivityDelegation(row)
+      (feature) =>
+        allowedDelegations.has(
+          normalize(
+            feature.attributes
+              ?.delegacion
           )
-        );
-      }
+        )
     );
 
   renderNationalViewerKpis(
@@ -2139,14 +2225,13 @@ function getDelegationCatalogTerritory() {
           feature.attributes || {};
 
         const region =
-          getActivityRegion(
-            attributes
-          );
+          getActivityRegion(attributes);
 
         const delegation =
-          getActivityDelegation(
-            attributes
-          );
+          String(
+            attributes.delegacion ||
+            ""
+          ).trim();
 
         if (
           filters.region &&
@@ -2221,9 +2306,8 @@ function renderNationalViewerKpis(
         .map(
           (feature) =>
             normalize(
-              getActivityProgram(
-                feature.attributes || {}
-              )
+              feature.attributes
+                ?.programa
             )
         )
         .filter(Boolean)
@@ -2235,13 +2319,11 @@ function renderNationalViewerKpis(
         .map(
           (feature) =>
             `${normalize(
-              getActivityProgram(
-                feature.attributes || {}
-              )
+              feature.attributes
+                ?.programa
             )}|||${normalize(
-              getActivityName(
-                feature.attributes || {}
-              )
+              feature.attributes
+                ?.actividad
             )}`
         )
         .filter(Boolean)
@@ -6642,18 +6724,13 @@ function buildDelegationMapGroups(features) {
     }
 
     const delegation =
-      getActivityDelegation(row) ||
-      "Sin delegación";
-
-    const region =
-      getActivityRegion(row) ||
-      "Sin región";
+      String(
+        row.delegacion ||
+        "Sin delegación"
+      ).trim();
 
     const delegationKey =
-      getRegionDelegationKey(
-        region,
-        delegation
-      );
+      normalize(delegation);
 
     if (!grouped.has(delegationKey)) {
       grouped.set(
@@ -6663,7 +6740,8 @@ function buildDelegationMapGroups(features) {
             delegation,
 
           direccion_regional:
-            region,
+            getActivityRegion(row) ||
+            "Sin región",
 
           features: [],
 
@@ -6679,12 +6757,16 @@ function buildDelegationMapGroups(features) {
     group.features.push(feature);
 
     const program =
-      getActivityProgram(row) ||
-      "Sin programa";
+      String(
+        row.programa ||
+        "Sin programa"
+      ).trim();
 
     const activity =
-      getActivityName(row) ||
-      "Sin actividad";
+      String(
+        row.actividad ||
+        "Sin actividad"
+      ).trim();
 
     if (
       normalize(activity) ===
@@ -8603,10 +8685,9 @@ function getRegionNumber(value) {
   const text =
     normalizeTerritory(value);
 
-  const match =
-    text.match(
-      /(?:DIRECCION\s+REGIONAL\s*)?0*(1[0-4]|[1-9])(?:\s|$)/
-    );
+  const match = text.match(
+    /(?:DIRECCION\s+REGIONAL|REGION|DR)?\s*0*(1[0-4]|[1-9])(?:[A-Z])?(?:\s|$)/
+  );
 
   return match
     ? Number(match[1])
@@ -8614,17 +8695,30 @@ function getRegionNumber(value) {
 }
 
 function getRegionName(value) {
+  const compactCode = normalize(value)
+    .replace(/[^A-Z0-9]/g, "");
+
+  const specialNames = {
+    DR1C: "SAN JOSE CENTRAL",
+    DR1N: "SAN JOSE NORTE",
+    DR1S: "SAN JOSE SUR"
+  };
+
+  if (specialNames[compactCode]) {
+    return specialNames[compactCode];
+  }
+
   return normalizeTerritory(value)
     .replace(
-      /\bDIRECCION\b/g,
-      " "
-    )
-    .replace(
-      /\bREGIONAL\b/g,
+      /DIRECCION\s+REGIONAL/g,
       " "
     )
     .replace(
       /\bREGION\b/g,
+      " "
+    )
+    .replace(
+      /\bDR\s*0*(1[0-4]|[1-9])[A-Z]?\b/g,
       " "
     )
     .replace(
@@ -8638,34 +8732,20 @@ function getRegionName(value) {
     .trim();
 }
 
-function getRegionIdentity(value) {
-  const number =
-    getRegionNumber(value);
+function sameRegion(left, right) {
+  const leftTerritory =
+    normalizeTerritory(left);
 
-  const name =
-    getRegionName(value);
+  const rightTerritory =
+    normalizeTerritory(right);
 
   if (
-    number !== null &&
-    name
+    leftTerritory &&
+    rightTerritory &&
+    leftTerritory === rightTerritory
   ) {
-    return `REGION-${number}|||${name}`;
+    return true;
   }
-
-  if (number !== null) {
-    return `REGION-${number}`;
-  }
-
-  return name ||
-    normalizeTerritory(value);
-}
-
-function sameRegion(left, right) {
-  const leftNumber =
-    getRegionNumber(left);
-
-  const rightNumber =
-    getRegionNumber(right);
 
   const leftName =
     getRegionName(left);
@@ -8673,80 +8753,30 @@ function sameRegion(left, right) {
   const rightName =
     getRegionName(right);
 
-  if (
-    leftNumber !== null &&
-    rightNumber !== null
-  ) {
-    if (
-      leftNumber !==
-      rightNumber
-    ) {
-      return false;
-    }
-
-    /*
-     * La Región 1 tiene tres Direcciones Regionales distintas:
-     * San José Central, San José Norte y San José Sur.
-     * Cuando ambos valores incluyen nombre, deben coincidir también
-     * para evitar mezclar o esconder estas tres regiones.
-     */
-    if (
-      leftName &&
-      rightName
-    ) {
-      return (
-        leftName ===
-        rightName
-      );
-    }
-
-    return true;
+  /* Primero se compara el nombre. Esto mantiene separadas
+     San José Central, San José Norte y San José Sur, aunque
+     las tres utilicen el número regional 1. */
+  if (leftName && rightName) {
+    return leftName === rightName;
   }
 
-  return Boolean(
-    leftName &&
-    rightName &&
-    leftName === rightName
+  const leftNumber =
+    getRegionNumber(left);
+
+  const rightNumber =
+    getRegionNumber(right);
+
+  return (
+    leftNumber !== null &&
+    rightNumber !== null &&
+    leftNumber === rightNumber
   );
 }
 
-function normalizeDelegationTerritory(value) {
-  return normalizeTerritory(value)
-    .replace(
-      /^DELEGACION\s+POLICIAL\s+/,
-      ""
-    )
-    .replace(
-      /^DELEGACION\s+/,
-      ""
-    )
-    .replace(
-      /^DP\s+/,
-      ""
-    )
-    .replace(
-      /^D\s*0*(?:1[0-4]|[1-9])\s*[A-Z]?\s+/,
-      ""
-    )
-    .replace(
-      /\s+/g,
-      " "
-    )
-    .trim();
-}
-
 function sameTerritory(left, right) {
-  const leftTerritory =
-    normalizeDelegationTerritory(left);
-
-  const rightTerritory =
-    normalizeDelegationTerritory(right);
-
-  return Boolean(
-    leftTerritory &&
-    rightTerritory &&
-    leftTerritory ===
-      rightTerritory
+  return (
+    normalizeTerritory(left) ===
+    normalizeTerritory(right)
   );
 }
 
