@@ -1255,27 +1255,69 @@ function getNationalTerritoryCatalogRows() {
 }
 
 function getNationalRegionOptions() {
-  return [
-    ...new Set(
-      getNationalTerritoryCatalogRows()
-        .map(
-          (row) =>
-            String(
-              row.region || ""
-            ).trim()
-        )
-        .filter(Boolean)
+  const options =
+    new Map();
+
+  getNationalTerritoryCatalogRows()
+    .map(
+      (row) =>
+        String(
+          row.region || ""
+        ).trim()
     )
-  ].sort((a, b) =>
-    a.localeCompare(
+    .filter(Boolean)
+    .forEach((region) => {
+      const number =
+        getRegionNumber(region);
+
+      const key =
+        number !== null
+          ? `REGION-${number}`
+          : getRegionName(region);
+
+      const current =
+        options.get(key);
+
+      if (
+        !current ||
+        region.length >
+          current.length
+      ) {
+        options.set(
+          key,
+          region
+        );
+      }
+    });
+
+  return [
+    ...options.values()
+  ].sort((a, b) => {
+    const aNumber =
+      getRegionNumber(a);
+
+    const bNumber =
+      getRegionNumber(b);
+
+    if (
+      aNumber !== null &&
+      bNumber !== null
+    ) {
+      return (
+        aNumber -
+        bNumber
+      );
+    }
+
+    return a.localeCompare(
       b,
       "es",
       {
         numeric: true,
         sensitivity: "base"
       }
-    )
-  );
+    );
+  });
 }
 
 function getNationalDelegationOptions(
@@ -1287,7 +1329,7 @@ function getNationalDelegationOptions(
         .filter(
           (row) =>
             !region ||
-            sameTerritory(
+            sameRegion(
               row.region,
               region
             )
@@ -1517,7 +1559,7 @@ function refreshNationalViewerDependentFilters() {
     rows.filter(
       (row) =>
         !filters.region ||
-        sameTerritory(
+        sameRegion(
           row.direccion_regional,
           filters.region
         )
@@ -1644,7 +1686,7 @@ function getNationalViewerFilteredFeatures() {
 
       if (
         filters.region &&
-        !sameTerritory(
+        !sameRegion(
           row.direccion_regional,
           filters.region
         )
@@ -1921,7 +1963,7 @@ function getDelegationCatalogTerritory() {
     rows.filter((row) => {
       if (
         filters.region &&
-        !sameTerritory(
+        !sameRegion(
           row.region,
           filters.region
         )
@@ -1988,7 +2030,7 @@ function getDelegationCatalogTerritory() {
 
         if (
           filters.region &&
-          !sameTerritory(
+          !sameRegion(
             region,
             filters.region
           )
@@ -8439,6 +8481,67 @@ function normalizeTerritory(value) {
       " "
     )
     .trim();
+}
+
+function getRegionNumber(value) {
+  const text =
+    normalizeTerritory(value);
+
+  const match =
+    text.match(
+      /(?:DIRECCION\s+REGIONAL\s*)?0*(1[0-4]|[1-9])(?:\s|$)/
+    );
+
+  return match
+    ? Number(match[1])
+    : null;
+}
+
+function getRegionName(value) {
+  return normalizeTerritory(value)
+    .replace(
+      /DIRECCION\s+REGIONAL/g,
+      " "
+    )
+    .replace(
+      /\b0*(1[0-4]|[1-9])\b/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
+}
+
+function sameRegion(left, right) {
+  const leftNumber =
+    getRegionNumber(left);
+
+  const rightNumber =
+    getRegionNumber(right);
+
+  if (
+    leftNumber !== null &&
+    rightNumber !== null
+  ) {
+    return (
+      leftNumber ===
+      rightNumber
+    );
+  }
+
+  const leftName =
+    getRegionName(left);
+
+  const rightName =
+    getRegionName(right);
+
+  return Boolean(
+    leftName &&
+    rightName &&
+    leftName === rightName
+  );
 }
 
 function sameTerritory(left, right) {
