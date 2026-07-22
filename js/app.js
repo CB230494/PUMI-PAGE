@@ -464,7 +464,7 @@ async function loadData() {
         );
 
     state.actividades =
-      filterVisibleActivityFeatures(
+      filterActivityFeaturesForCurrentRole(
         activities.features || []
       );
 
@@ -594,6 +594,49 @@ function isVisibleActivityFeature(feature = {}) {
 function filterVisibleActivityFeatures(features = []) {
   return (features || []).filter(
     isVisibleActivityFeature
+  );
+}
+
+/*
+ * El Visor Nacional debe conservar los registros históricos importados
+ * aunque su texto de programa/actividad no coincida exactamente con el
+ * catálogo actual. Los demás roles mantienen la validación original.
+ */
+function isNationalViewerVisibleActivityRow(row = {}) {
+  if (normalize(row.estado_registro) === "ELIMINADO") {
+    return false;
+  }
+
+  const program = String(row.programa || "").trim();
+  const activity = String(row.actividad || "").trim();
+
+  if (
+    !program ||
+    !activity ||
+    normalize(program) === "PROGRAMA" ||
+    normalize(activity) === "ACTIVIDAD"
+  ) {
+    return false;
+  }
+
+  if (isHistorical(row)) {
+    return numberValue(row.meta) > 0;
+  }
+
+  return isVisibleActivityRow(row);
+}
+
+function isNationalViewerVisibleActivityFeature(feature = {}) {
+  return isNationalViewerVisibleActivityRow(
+    feature.attributes || {}
+  );
+}
+
+function filterActivityFeaturesForCurrentRole(features = []) {
+  return (features || []).filter(
+    isNationalViewerRole()
+      ? isNationalViewerVisibleActivityFeature
+      : isVisibleActivityFeature
   );
 }
 
@@ -1152,7 +1195,7 @@ function getNationalViewerTablePanel() {
 function getNationalViewerBaseRows() {
   return getRows().filter(
     (row) =>
-      isVisibleActivityRow(row)
+      isNationalViewerVisibleActivityRow(row)
   );
 }
 
@@ -1478,10 +1521,19 @@ function getNationalRegionOptions() {
       const number =
         getRegionNumber(region);
 
+      const regionName =
+        getRegionName(region);
+
+      /*
+       * Las tres Direcciones Regionales 1 comparten número,
+       * pero son territorios distintos: Central, Norte y Sur.
+       */
       const key =
-        number !== null
-          ? `REGION-${number}`
-          : getRegionName(region);
+        number === 1 && regionName
+          ? `REGION-1-${regionName}`
+          : number !== null
+            ? `REGION-${number}`
+            : regionName;
 
       const current =
         options.get(key);
@@ -1885,9 +1937,11 @@ function getNationalViewerFilteredFeatures() {
   const filters =
     state.nationalViewerFilters;
 
-  return filterVisibleActivityFeatures(
-    state.actividades
-  ).filter(
+  return (state.actividades || [])
+    .filter(
+      isNationalViewerVisibleActivityFeature
+    )
+    .filter(
     (feature) => {
       const row =
         feature.attributes || {};
@@ -6719,7 +6773,13 @@ function buildDelegationMapGroups(features) {
     const row =
       feature.attributes || {};
 
-    if (!isVisibleActivityRow(row)) {
+    if (
+      !isVisibleActivityRow(row) &&
+      !(
+        isNationalViewerRole() &&
+        isNationalViewerVisibleActivityRow(row)
+      )
+    ) {
       continue;
     }
 
