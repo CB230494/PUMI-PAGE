@@ -1193,10 +1193,12 @@ function getNationalViewerTablePanel() {
 }
 
 function getNationalViewerBaseRows() {
-  return getRows().filter(
-    (row) =>
-      isNationalViewerVisibleActivityRow(row)
-  );
+  return (state.actividades || [])
+    .filter(isNationalViewerVisibleActivityFeature)
+    .map((feature) => ({
+      ...(feature.attributes || {}),
+      __geometry: feature.geometry || null
+    }));
 }
 
 /*
