@@ -1687,6 +1687,150 @@ function applyNationalViewerFilters() {
   );
 }
 
+function getDelegationCatalogTerritory() {
+  const filters =
+    state.nationalViewerFilters || {};
+
+  const rows =
+    (state.delegaciones || [])
+      .map((feature) => {
+        const attributes =
+          feature.attributes || {};
+
+        const delegation =
+          attributes.delegacion ??
+          attributes.Delegacion ??
+          attributes.DELEGACION ??
+          attributes.nombre_delegacion ??
+          attributes.NOMBRE_DELEGACION ??
+          attributes.nombre ??
+          attributes.Nombre ??
+          attributes.NOMBRE ??
+          "";
+
+        const region =
+          attributes.direccion_regional ??
+          attributes.Direccion_Regional ??
+          attributes.DIRECCION_REGIONAL ??
+          attributes.direccionRegional ??
+          attributes.region ??
+          attributes.Region ??
+          attributes.REGION ??
+          attributes.nombre_region ??
+          attributes.NOMBRE_REGION ??
+          "";
+
+        return {
+          delegation:
+            String(delegation || "").trim(),
+
+          region:
+            String(region || "").trim()
+        };
+      })
+      .filter(
+        (row) =>
+          Boolean(row.delegation)
+      );
+
+  const filtered =
+    rows.filter((row) => {
+      if (
+        filters.region &&
+        normalize(row.region) !==
+          normalize(filters.region)
+      ) {
+        return false;
+      }
+
+      if (
+        filters.delegation &&
+        normalize(row.delegation) !==
+          normalize(filters.delegation)
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+  const delegationKeys =
+    new Set(
+      filtered
+        .map(
+          (row) =>
+            normalize(row.delegation)
+        )
+        .filter(Boolean)
+    );
+
+  const regionKeys =
+    new Set(
+      filtered
+        .map(
+          (row) =>
+            normalize(row.region)
+        )
+        .filter(Boolean)
+    );
+
+  /*
+   * Respaldo:
+   * si la capa de delegaciones no trae el nombre de la región,
+   * las regiones se cuentan desde todas las actividades cargadas,
+   * sin excluir registros por meta 0.
+   */
+  if (regionKeys.size === 0) {
+    (state.actividades || [])
+      .forEach((feature) => {
+        const attributes =
+          feature.attributes || {};
+
+        const region =
+          String(
+            attributes.direccion_regional ||
+            ""
+          ).trim();
+
+        const delegation =
+          String(
+            attributes.delegacion ||
+            ""
+          ).trim();
+
+        if (
+          filters.region &&
+          normalize(region) !==
+            normalize(filters.region)
+        ) {
+          return;
+        }
+
+        if (
+          filters.delegation &&
+          normalize(delegation) !==
+            normalize(filters.delegation)
+        ) {
+          return;
+        }
+
+        if (region) {
+          regionKeys.add(
+            normalize(region)
+          );
+        }
+      });
+  }
+
+  return {
+    regions:
+      regionKeys.size,
+
+    delegations:
+      delegationKeys.size
+  };
+}
+
 function renderNationalViewerKpis(
   delegationRows,
   visibleFeatures
@@ -1714,15 +1858,8 @@ function renderNationalViewerKpis(
       ? (advance / meta) * 100
       : 0;
 
-  const regions =
-    new Set(
-      delegationRows.map(
-        (row) =>
-          normalize(
-            row.direccion_regional
-          )
-      )
-    ).size;
+  const territory =
+    getDelegationCatalogTerritory();
 
   const programs =
     new Set(
@@ -1761,10 +1898,13 @@ function renderNationalViewerKpis(
       "% cumplimiento",
       `${percentage.toFixed(1)}%`
     ],
-    ["Regiones", regions],
+    [
+      "Regiones",
+      territory.regions
+    ],
     [
       "Delegaciones",
-      delegationRows.length
+      territory.delegations
     ],
     ["Programas", programs],
     ["Actividades", activities]
