@@ -1287,8 +1287,10 @@ function getNationalDelegationOptions(
         .filter(
           (row) =>
             !region ||
-            normalize(row.region) ===
-              normalize(region)
+            sameTerritory(
+              row.region,
+              region
+            )
         )
         .map(
           (row) =>
@@ -1422,6 +1424,30 @@ function renderNationalViewerControls() {
         captureNationalViewerFilters();
 
         if (
+          id ===
+          "national-filter-region"
+        ) {
+          state.nationalViewerFilters.delegation = "";
+          state.nationalViewerFilters.program = "";
+          state.nationalViewerFilters.activity = "";
+        }
+
+        if (
+          id ===
+          "national-filter-delegation"
+        ) {
+          state.nationalViewerFilters.program = "";
+          state.nationalViewerFilters.activity = "";
+        }
+
+        if (
+          id ===
+          "national-filter-program"
+        ) {
+          state.nationalViewerFilters.activity = "";
+        }
+
+        if (
           id !==
           "national-filter-compliance"
         ) {
@@ -1491,22 +1517,20 @@ function refreshNationalViewerDependentFilters() {
     rows.filter(
       (row) =>
         !filters.region ||
-        normalize(
-          row.direccion_regional
-        ) ===
-          normalize(
-            filters.region
-          )
+        sameTerritory(
+          row.direccion_regional,
+          filters.region
+        )
     );
 
   const filteredByDelegation =
     filteredByRegion.filter(
       (row) =>
         !filters.delegation ||
-        normalize(row.delegacion) ===
-          normalize(
-            filters.delegation
-          )
+        sameTerritory(
+          row.delegacion,
+          filters.delegation
+        )
     );
 
   const programs = [
@@ -1593,6 +1617,18 @@ function refreshNationalViewerDependentFilters() {
     $("national-filter-activity"),
     filters.activity
   );
+
+  state.nationalViewerFilters.delegation =
+    $("national-filter-delegation")
+      ?.value || "";
+
+  state.nationalViewerFilters.program =
+    $("national-filter-program")
+      ?.value || "";
+
+  state.nationalViewerFilters.activity =
+    $("national-filter-activity")
+      ?.value || "";
 }
 
 function getNationalViewerFilteredFeatures() {
@@ -1608,18 +1644,20 @@ function getNationalViewerFilteredFeatures() {
 
       if (
         filters.region &&
-        normalize(
-          row.direccion_regional
-        ) !==
-          normalize(filters.region)
+        !sameTerritory(
+          row.direccion_regional,
+          filters.region
+        )
       ) {
         return false;
       }
 
       if (
         filters.delegation &&
-        normalize(row.delegacion) !==
-          normalize(filters.delegation)
+        !sameTerritory(
+          row.delegacion,
+          filters.delegation
+        )
       ) {
         return false;
       }
@@ -1883,16 +1921,20 @@ function getDelegationCatalogTerritory() {
     rows.filter((row) => {
       if (
         filters.region &&
-        normalize(row.region) !==
-          normalize(filters.region)
+        !sameTerritory(
+          row.region,
+          filters.region
+        )
       ) {
         return false;
       }
 
       if (
         filters.delegation &&
-        normalize(row.delegation) !==
-          normalize(filters.delegation)
+        !sameTerritory(
+          row.delegation,
+          filters.delegation
+        )
       ) {
         return false;
       }
@@ -1946,16 +1988,20 @@ function getDelegationCatalogTerritory() {
 
         if (
           filters.region &&
-          normalize(region) !==
-            normalize(filters.region)
+          !sameTerritory(
+            region,
+            filters.region
+          )
         ) {
           return;
         }
 
         if (
           filters.delegation &&
-          normalize(delegation) !==
-            normalize(filters.delegation)
+          !sameTerritory(
+            delegation,
+            filters.delegation
+          )
         ) {
           return;
         }
@@ -8343,32 +8389,16 @@ function setSelectValue(
   select,
   value
 ) {
-  if (!select || !value) {
+  if (!select) {
     return;
   }
 
   const target =
-    String(value).trim();
+    String(value || "").trim();
 
-  const exists = [
-    ...select.options
-  ].some(
-    (option) =>
-      normalize(option.value) ===
-      normalize(target)
-  );
-
-  if (!exists) {
-    select.insertAdjacentHTML(
-      "beforeend",
-      `
-        <option
-          value="${escapeHtml(target)}"
-        >
-          ${escapeHtml(target)}
-        </option>
-      `
-    );
+  if (!target) {
+    select.value = "";
+    return;
   }
 
   const option = [
@@ -8381,7 +8411,10 @@ function setSelectValue(
 
   if (option) {
     select.value = option.value;
+    return;
   }
+
+  select.value = "";
 }
 
 function normalize(value) {
@@ -8393,6 +8426,26 @@ function normalize(value) {
       ""
     )
     .toUpperCase();
+}
+
+function normalizeTerritory(value) {
+  return normalize(value)
+    .replace(
+      /[^A-Z0-9]+/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
+}
+
+function sameTerritory(left, right) {
+  return (
+    normalizeTerritory(left) ===
+    normalizeTerritory(right)
+  );
 }
 
 function numberValue(value) {
