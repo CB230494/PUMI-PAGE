@@ -941,7 +941,7 @@ function getRegionDelegationKey(
   region,
   delegation
 ) {
-  return `${normalizeTerritory(region)}|||${normalizeTerritory(delegation)}`;
+  return `${getRegionIdentity(region)}|||${normalizeDelegationTerritory(delegation)}`;
 }
 
 function getLocationCatalogRows() {
@@ -1350,7 +1350,10 @@ function getNationalTerritoryCatalogRows() {
     ...activityRows
   ].forEach((row) => {
     const key =
-      `${normalize(row.region)}|||${normalize(row.delegation)}`;
+      getRegionDelegationKey(
+        row.region,
+        row.delegation
+      );
 
     if (!combined.has(key)) {
       combined.set(
@@ -1382,9 +1385,7 @@ function getNationalRegionOptions() {
         getRegionNumber(region);
 
       const key =
-        number !== null
-          ? `REGION-${number}`
-          : getRegionName(region);
+        getRegionIdentity(region);
 
       const current =
         options.get(key);
@@ -1412,7 +1413,8 @@ function getNationalRegionOptions() {
 
     if (
       aNumber !== null &&
-      bNumber !== null
+      bNumber !== null &&
+      aNumber !== bNumber
     ) {
       return (
         aNumber -
@@ -8636,6 +8638,28 @@ function getRegionName(value) {
     .trim();
 }
 
+function getRegionIdentity(value) {
+  const number =
+    getRegionNumber(value);
+
+  const name =
+    getRegionName(value);
+
+  if (
+    number !== null &&
+    name
+  ) {
+    return `REGION-${number}|||${name}`;
+  }
+
+  if (number !== null) {
+    return `REGION-${number}`;
+  }
+
+  return name ||
+    normalizeTerritory(value);
+}
+
 function sameRegion(left, right) {
   const leftNumber =
     getRegionNumber(left);
@@ -8643,21 +8667,41 @@ function sameRegion(left, right) {
   const rightNumber =
     getRegionNumber(right);
 
-  if (
-    leftNumber !== null &&
-    rightNumber !== null
-  ) {
-    return (
-      leftNumber ===
-      rightNumber
-    );
-  }
-
   const leftName =
     getRegionName(left);
 
   const rightName =
     getRegionName(right);
+
+  if (
+    leftNumber !== null &&
+    rightNumber !== null
+  ) {
+    if (
+      leftNumber !==
+      rightNumber
+    ) {
+      return false;
+    }
+
+    /*
+     * La Región 1 tiene tres Direcciones Regionales distintas:
+     * San José Central, San José Norte y San José Sur.
+     * Cuando ambos valores incluyen nombre, deben coincidir también
+     * para evitar mezclar o esconder estas tres regiones.
+     */
+    if (
+      leftName &&
+      rightName
+    ) {
+      return (
+        leftName ===
+        rightName
+      );
+    }
+
+    return true;
+  }
 
   return Boolean(
     leftName &&
@@ -8666,10 +8710,43 @@ function sameRegion(left, right) {
   );
 }
 
+function normalizeDelegationTerritory(value) {
+  return normalizeTerritory(value)
+    .replace(
+      /^DELEGACION\s+POLICIAL\s+/,
+      ""
+    )
+    .replace(
+      /^DELEGACION\s+/,
+      ""
+    )
+    .replace(
+      /^DP\s+/,
+      ""
+    )
+    .replace(
+      /^D\s*0*(?:1[0-4]|[1-9])\s*[A-Z]?\s+/,
+      ""
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
+}
+
 function sameTerritory(left, right) {
-  return (
-    normalizeTerritory(left) ===
-    normalizeTerritory(right)
+  const leftTerritory =
+    normalizeDelegationTerritory(left);
+
+  const rightTerritory =
+    normalizeDelegationTerritory(right);
+
+  return Boolean(
+    leftTerritory &&
+    rightTerritory &&
+    leftTerritory ===
+      rightTerritory
   );
 }
 
