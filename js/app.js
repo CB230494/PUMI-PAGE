@@ -1156,6 +1156,160 @@ function getNationalViewerBaseRows() {
   );
 }
 
+function getNationalTerritoryCatalogRows() {
+  const catalogRows =
+    (state.delegaciones || [])
+      .map((feature) => {
+        const attributes =
+          feature.attributes || {};
+
+        const delegation =
+          attributes.delegacion ??
+          attributes.Delegacion ??
+          attributes.DELEGACION ??
+          attributes.nombre_delegacion ??
+          attributes.NOMBRE_DELEGACION ??
+          attributes.nombre ??
+          attributes.Nombre ??
+          attributes.NOMBRE ??
+          "";
+
+        const region =
+          attributes.direccion_regional ??
+          attributes.Direccion_Regional ??
+          attributes.DIRECCION_REGIONAL ??
+          attributes.direccionRegional ??
+          attributes.region ??
+          attributes.Region ??
+          attributes.REGION ??
+          attributes.nombre_region ??
+          attributes.NOMBRE_REGION ??
+          "";
+
+        return {
+          delegation:
+            String(delegation || "").trim(),
+
+          region:
+            String(region || "").trim()
+        };
+      })
+      .filter(
+        (row) =>
+          Boolean(
+            row.delegation ||
+            row.region
+          )
+      );
+
+  const activityRows =
+    (state.actividades || [])
+      .map((feature) => {
+        const attributes =
+          feature.attributes || {};
+
+        return {
+          delegation:
+            String(
+              attributes.delegacion ||
+              ""
+            ).trim(),
+
+          region:
+            String(
+              attributes.direccion_regional ||
+              attributes.region ||
+              ""
+            ).trim()
+        };
+      })
+      .filter(
+        (row) =>
+          Boolean(
+            row.delegation ||
+            row.region
+          )
+      );
+
+  const combined =
+    new Map();
+
+  [
+    ...catalogRows,
+    ...activityRows
+  ].forEach((row) => {
+    const key =
+      `${normalize(row.region)}|||${normalize(row.delegation)}`;
+
+    if (!combined.has(key)) {
+      combined.set(
+        key,
+        row
+      );
+    }
+  });
+
+  return [
+    ...combined.values()
+  ];
+}
+
+function getNationalRegionOptions() {
+  return [
+    ...new Set(
+      getNationalTerritoryCatalogRows()
+        .map(
+          (row) =>
+            String(
+              row.region || ""
+            ).trim()
+        )
+        .filter(Boolean)
+    )
+  ].sort((a, b) =>
+    a.localeCompare(
+      b,
+      "es",
+      {
+        numeric: true,
+        sensitivity: "base"
+      }
+    )
+  );
+}
+
+function getNationalDelegationOptions(
+  region = ""
+) {
+  return [
+    ...new Set(
+      getNationalTerritoryCatalogRows()
+        .filter(
+          (row) =>
+            !region ||
+            normalize(row.region) ===
+              normalize(region)
+        )
+        .map(
+          (row) =>
+            String(
+              row.delegation || ""
+            ).trim()
+        )
+        .filter(Boolean)
+    )
+  ].sort((a, b) =>
+    a.localeCompare(
+      b,
+      "es",
+      {
+        numeric: true,
+        sensitivity: "base"
+      }
+    )
+  );
+}
+
 function renderNationalViewerControls() {
   const panel =
     getNationalViewerControlsPanel();
@@ -1164,24 +1318,8 @@ function renderNationalViewerControls() {
     return;
   }
 
-  const rows =
-    getNationalViewerBaseRows();
-
-  const regions = [
-    ...new Set(
-      rows
-        .map(
-          (row) =>
-            String(
-              row.direccion_regional ||
-              ""
-            ).trim()
-        )
-        .filter(Boolean)
-    )
-  ].sort((a, b) =>
-    a.localeCompare(b, "es")
-  );
+  const regions =
+    getNationalRegionOptions();
 
   panel.innerHTML = `
     <div class="panel-header">
@@ -1344,6 +1482,11 @@ function refreshNationalViewerDependentFilters() {
   const rows =
     getNationalViewerBaseRows();
 
+  const delegations =
+    getNationalDelegationOptions(
+      filters.region
+    );
+
   const filteredByRegion =
     rows.filter(
       (row) =>
@@ -1355,19 +1498,6 @@ function refreshNationalViewerDependentFilters() {
             filters.region
           )
     );
-
-  const delegations = [
-    ...new Set(
-      filteredByRegion
-        .map(
-          (row) =>
-            String(
-              row.delegacion || ""
-            ).trim()
-        )
-        .filter(Boolean)
-    )
-  ];
 
   const filteredByDelegation =
     filteredByRegion.filter(
@@ -1390,7 +1520,15 @@ function refreshNationalViewerDependentFilters() {
         )
         .filter(Boolean)
     )
-  ];
+  ].sort((a, b) =>
+    a.localeCompare(
+      b,
+      "es",
+      {
+        sensitivity: "base"
+      }
+    )
+  );
 
   const filteredByProgram =
     filteredByDelegation.filter(
@@ -1413,7 +1551,15 @@ function refreshNationalViewerDependentFilters() {
         )
         .filter(Boolean)
     )
-  ];
+  ].sort((a, b) =>
+    a.localeCompare(
+      b,
+      "es",
+      {
+        sensitivity: "base"
+      }
+    )
+  );
 
   fillSelect(
     $("national-filter-delegation"),
@@ -6446,6 +6592,39 @@ function buildDelegationPopupHtml(
         numberValue(item.meta) > 0
     );
 
+  const totalMeta =
+    activities.reduce(
+      (total, item) =>
+        total +
+        numberValue(item.meta),
+      0
+    );
+
+  const totalAdvance =
+    activities.reduce(
+      (total, item) =>
+        total +
+        Math.min(
+          numberValue(item.avance),
+          numberValue(item.meta)
+        ),
+      0
+    );
+
+  const totalPending =
+    Math.max(
+      totalMeta - totalAdvance,
+      0
+    );
+
+  const totalPercentage =
+    totalMeta > 0
+      ? (
+          totalAdvance /
+          totalMeta
+        ) * 100
+      : 0;
+
   return `
     <div class="pumi-map-popup">
       <div class="pumi-map-popup-head">
@@ -6463,6 +6642,36 @@ function buildDelegationPopupHtml(
 
       <div class="pumi-map-popup-region">
         ${escapeHtml(group.direccion_regional)}
+      </div>
+
+      <div class="pumi-map-popup-total">
+        <div>
+          <span>Meta total</span>
+          <strong>
+            ${formatNumber(totalMeta)}
+          </strong>
+        </div>
+
+        <div>
+          <span>Avance total</span>
+          <strong>
+            ${formatNumber(totalAdvance)}
+          </strong>
+        </div>
+
+        <div>
+          <span>Pendiente</span>
+          <strong>
+            ${formatNumber(totalPending)}
+          </strong>
+        </div>
+
+        <div>
+          <span>Cumplimiento</span>
+          <strong>
+            ${totalPercentage.toFixed(1)}%
+          </strong>
+        </div>
       </div>
 
       <div class="pumi-map-popup-list">
@@ -7642,6 +7851,36 @@ function injectVisualEnhancements() {
       color: #66758b;
       font-size: 0.78rem;
       font-weight: 700;
+    }
+
+    .pumi-map-popup-total {
+      display: grid;
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 10px 0 12px;
+      padding: 10px;
+      border: 1px solid #dbe5f2;
+      border-radius: 12px;
+      background: #f5f8fd;
+    }
+
+    .pumi-map-popup-total div {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .pumi-map-popup-total span {
+      color: #61708a;
+      font-size: 0.76rem;
+      font-weight: 800;
+    }
+
+    .pumi-map-popup-total strong {
+      color: #073b8c;
+      font-size: 1rem;
+      font-weight: 900;
     }
 
     .pumi-map-popup-list {
