@@ -8992,3 +8992,237 @@ function showToast(
     4000
   );
 }
+function getDelegationCanonicalKey(value = "") {
+  const text = normalizeTerritory(value);
+
+  if (!text) return "";
+
+  if (text.includes("SAN CARLOS ESTE")) return "D82E";
+  if (text.includes("SAN CARLOS OESTE")) return "D82O";
+  if (text.includes("RIO CUARTO")) return "D87";
+  if (text.includes("TARRAZU")) return "D45";
+
+  if (text.includes("SAN RAFAEL")) {
+    const match = text.match(/\bD\s*0*(\d{1,3})\b/);
+    if (match && Number(match[1]) === 53) return "D53";
+  }
+
+  const separated = text.match(
+    /^D\s*0*(\d{1,3})(?:\s+([A-Z]))?(?:\s|$)/
+  );
+
+  if (separated) {
+    return `D${Number(separated[1])}${separated[2] || ""}`;
+  }
+
+  const compact = normalize(value).replace(/[^A-Z0-9]/g, "");
+  const numeric = compact.match(/^D0*(\d{1,3})/);
+
+  return numeric ? `D${Number(numeric[1])}` : text;
+}
+
+function sameDelegation(left, right) {
+  const leftKey = getDelegationCanonicalKey(left);
+  const rightKey = getDelegationCanonicalKey(right);
+
+  return Boolean(leftKey && rightKey && leftKey === rightKey);
+}
+
+function getOfficialDelegationName(value = "") {
+  const key = getDelegationCanonicalKey(value);
+
+  if (!key) return String(value || "").trim();
+
+  const matches = (state.delegaciones || [])
+    .map((feature) => {
+      const attributes = feature.attributes || {};
+
+      return getCatalogFieldValue(
+        attributes,
+        "delegacion",
+        "Delegacion",
+        "Delegación",
+        "DELEGACION",
+        "nombre_delegacion",
+        "NOMBRE_DELEGACION",
+        "nombre",
+        "Nombre",
+        "NOMBRE"
+      );
+    })
+    .filter(Boolean)
+    .filter(
+      (delegation) =>
+        getDelegationCanonicalKey(delegation) === key
+    );
+
+  if (matches.length) {
+    return matches.sort((a, b) => {
+      const aHasSpace = /\d\s+\D/.test(a) ? 1 : 0;
+      const bHasSpace = /\d\s+\D/.test(b) ? 1 : 0;
+
+      if (aHasSpace !== bHasSpace) {
+        return bHasSpace - aHasSpace;
+      }
+
+      return a.length - b.length;
+    })[0];
+  }
+
+  const fallbacks = {
+    D82E: "D82E San Carlos Este",
+    D82O: "D82O San Carlos Oeste",
+    D87: "D87 Río Cuarto",
+    D45: "D45 Tarrazú",
+    D53: "D53 San Rafael"
+  };
+
+  return fallbacks[key] || String(value || "").trim();
+}
+
+function getRegionFromDelegationCatalog(delegation = "") {
+  const cleanDelegation = String(delegation || "").trim();
+
+  if (!cleanDelegation) return "";
+
+  const match = (state.delegaciones || [])
+    .map((feature) => feature.attributes || {})
+    .find((attributes) => {
+      const catalogDelegation = getCatalogFieldValue(
+        attributes,
+        "delegacion",
+        "Delegacion",
+        "Delegación",
+        "DELEGACION",
+        "nombre_delegacion",
+        "NOMBRE_DELEGACION",
+        "nombre",
+        "Nombre",
+        "NOMBRE"
+      );
+
+      return sameDelegation(catalogDelegation, cleanDelegation);
+    });
+
+  if (!match) return "";
+
+  return getCatalogFieldValue(
+    match,
+    "direccion_regional",
+    "Direccion_Regional",
+    "Dirección regional",
+    "DIRECCION_REGIONAL",
+    "direccionRegional",
+    "region",
+    "Region",
+    "REGION",
+    "nombre_region",
+    "NOMBRE_REGION"
+  );
+}
+
+function getNationalTerritoryCatalogRows() {
+  const combined = new Map();
+
+  const addRow = (delegation, region, catalogPriority = false) => {
+    const cleanDelegation = String(delegation || "").trim();
+    const cleanRegion = String(region || "").trim();
+
+    if (!cleanDelegation && !cleanRegion) return;
+
+    const delegationKey = getDelegationCanonicalKey(cleanDelegation);
+    const regionKey = normalize(cleanRegion);
+    const key = `${regionKey}|||${delegationKey}`;
+    const current = combined.get(key);
+    const officialName = getOfficialDelegationName(cleanDelegation);
+
+    if (
+      !current ||
+      catalogPriority ||
+      officialName.length < current.delegation.length
+    ) {
+      combined.set(key, {
+        delegation: officialName || cleanDelegation,
+        region: cleanRegion,
+        delegationKey
+      });
+    }
+  };
+
+  (state.delegaciones || []).forEach((feature) => {
+    const attributes = feature.attributes || {};
+
+    addRow(
+      getCatalogFieldValue(
+        attributes,
+        "delegacion",
+        "Delegacion",
+        "Delegación",
+        "DELEGACION",
+        "nombre_delegacion",
+        "NOMBRE_DELEGACION",
+        "nombre",
+        "Nombre",
+        "NOMBRE"
+      ),
+      getCatalogFieldValue(
+        attributes,
+        "direccion_regional",
+        "Direccion_Regional",
+        "Dirección regional",
+        "DIRECCION_REGIONAL",
+        "direccionRegional",
+        "region",
+        "Region",
+        "REGION",
+        "nombre_region",
+        "NOMBRE_REGION"
+      ),
+      true
+    );
+  });
+
+  (state.actividades || []).forEach((feature) => {
+    const attributes = feature.attributes || {};
+
+    addRow(
+      getActivityDelegation(attributes),
+      getActivityRegion(attributes),
+      false
+    );
+  });
+
+  return [...combined.values()];
+}
+
+function getNationalDelegationOptions(region = "") {
+  const options = new Map();
+
+  getNationalTerritoryCatalogRows()
+    .filter(
+      (row) =>
+        !region ||
+        sameRegion(row.region, region)
+    )
+    .forEach((row) => {
+      const key =
+        row.delegationKey ||
+        getDelegationCanonicalKey(row.delegation);
+
+      if (!key) return;
+
+      if (!options.has(key)) {
+        options.set(
+          key,
+          getOfficialDelegationName(row.delegation)
+        );
+      }
+    });
+
+  return [...options.values()].sort((a, b) =>
+    a.localeCompare(b, "es", {
+      numeric: true,
+      sensitivity: "base"
+    })
+  );
+}
