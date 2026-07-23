@@ -1272,7 +1272,7 @@ function getRegionFromDelegationCatalog(delegation = "") {
         "NOMBRE"
       );
 
-      return sameTerritory(
+      return sameDelegation(
         catalogDelegation,
         cleanDelegation
       );
@@ -1414,93 +1414,114 @@ function getActivityRegion(row = {}) {
 }
 
 function getNationalTerritoryCatalogRows() {
-  const catalogRows =
-    (state.delegaciones || [])
-      .map((feature) => {
-        const attributes =
-          feature.attributes || {};
+  const combined = new Map();
 
-        const delegation =
-          attributes.delegacion ??
-          attributes.Delegacion ??
-          attributes.DELEGACION ??
-          attributes.nombre_delegacion ??
-          attributes.NOMBRE_DELEGACION ??
-          attributes.nombre ??
-          attributes.Nombre ??
-          attributes.NOMBRE ??
-          "";
+  const addRow = (
+    delegation,
+    region,
+    catalogPriority = false
+  ) => {
+    const cleanDelegation =
+      String(delegation || "").trim();
 
-        const region =
-          attributes.direccion_regional ??
-          attributes.Direccion_Regional ??
-          attributes.DIRECCION_REGIONAL ??
-          attributes.direccionRegional ??
-          attributes.region ??
-          attributes.Region ??
-          attributes.REGION ??
-          attributes.nombre_region ??
-          attributes.NOMBRE_REGION ??
-          "";
+    const cleanRegion =
+      String(region || "").trim();
 
-        return {
-          delegation:
-            String(delegation || "").trim(),
+    if (!cleanDelegation && !cleanRegion) {
+      return;
+    }
 
-          region:
-            String(region || "").trim()
-        };
-      })
-      .filter(
-        (row) =>
-          Boolean(
-            row.delegation ||
-            row.region
-          )
+    const delegationKey =
+      getDelegationCanonicalKey(
+        cleanDelegation
       );
 
-  const activityRows =
-    (state.actividades || [])
-      .map((feature) => {
-        const attributes =
-          feature.attributes || {};
+    const regionKey =
+      normalize(cleanRegion);
 
-        return {
-          delegation:
-            String(
-              attributes.delegacion ||
-              ""
-            ).trim(),
-
-          region:
-            getActivityRegion(attributes)
-        };
-      })
-      .filter(
-        (row) =>
-          Boolean(
-            row.delegation ||
-            row.region
-          )
-      );
-
-  const combined =
-    new Map();
-
-  [
-    ...catalogRows,
-    ...activityRows
-  ].forEach((row) => {
     const key =
-      `${normalize(row.region)}|||${normalize(row.delegation)}`;
+      `${regionKey}|||${delegationKey}`;
 
-    if (!combined.has(key)) {
+    const current =
+      combined.get(key);
+
+    const officialName =
+      getOfficialDelegationName(
+        cleanDelegation
+      );
+
+    if (
+      !current ||
+      catalogPriority ||
+      officialName.length <
+        current.delegation.length
+    ) {
       combined.set(
         key,
-        row
+        {
+          delegation:
+            officialName ||
+            cleanDelegation,
+
+          region:
+            cleanRegion,
+
+          delegationKey
+        }
       );
     }
-  });
+  };
+
+  (state.delegaciones || [])
+    .forEach((feature) => {
+      const attributes =
+        feature.attributes || {};
+
+      addRow(
+        getCatalogFieldValue(
+          attributes,
+          "delegacion",
+          "Delegacion",
+          "Delegación",
+          "DELEGACION",
+          "nombre_delegacion",
+          "NOMBRE_DELEGACION",
+          "nombre",
+          "Nombre",
+          "NOMBRE"
+        ),
+        getCatalogFieldValue(
+          attributes,
+          "direccion_regional",
+          "Direccion_Regional",
+          "Dirección regional",
+          "DIRECCION_REGIONAL",
+          "direccionRegional",
+          "region",
+          "Region",
+          "REGION",
+          "nombre_region",
+          "NOMBRE_REGION"
+        ),
+        true
+      );
+    });
+
+  (state.actividades || [])
+    .forEach((feature) => {
+      const attributes =
+        feature.attributes || {};
+
+      addRow(
+        getActivityDelegation(
+          attributes
+        ),
+        getActivityRegion(
+          attributes
+        ),
+        false
+      );
+    });
 
   return [
     ...combined.values()
@@ -1585,25 +1606,40 @@ function getNationalRegionOptions() {
 function getNationalDelegationOptions(
   region = ""
 ) {
-  return [
-    ...new Set(
-      getNationalTerritoryCatalogRows()
-        .filter(
-          (row) =>
-            !region ||
-            sameRegion(
-              row.region,
-              region
-            )
+  const options = new Map();
+
+  getNationalTerritoryCatalogRows()
+    .filter(
+      (row) =>
+        !region ||
+        sameRegion(
+          row.region,
+          region
         )
-        .map(
-          (row) =>
-            String(
-              row.delegation || ""
-            ).trim()
-        )
-        .filter(Boolean)
     )
+    .forEach((row) => {
+      const key =
+        row.delegationKey ||
+        getDelegationCanonicalKey(
+          row.delegation
+        );
+
+      if (!key) {
+        return;
+      }
+
+      if (!options.has(key)) {
+        options.set(
+          key,
+          getOfficialDelegationName(
+            row.delegation
+          )
+        );
+      }
+    });
+
+  return [
+    ...options.values()
   ].sort((a, b) =>
     a.localeCompare(
       b,
@@ -1831,7 +1867,7 @@ function refreshNationalViewerDependentFilters() {
     filteredByRegion.filter(
       (row) =>
         !filters.delegation ||
-        sameTerritory(
+        sameDelegation(
           row.delegacion,
           filters.delegation
         )
@@ -1960,7 +1996,7 @@ function getNationalViewerFilteredFeatures() {
 
       if (
         filters.delegation &&
-        !sameTerritory(
+        !sameDelegation(
           row.delegacion,
           filters.delegation
         )
@@ -2145,7 +2181,9 @@ function applyNationalViewerFilters() {
     new Set(
       delegationRows.map(
         (row) =>
-          normalize(row.delegacion)
+          getDelegationCanonicalKey(
+            row.delegacion
+          )
       )
     );
 
@@ -2153,7 +2191,7 @@ function applyNationalViewerFilters() {
     baseFeatures.filter(
       (feature) =>
         allowedDelegations.has(
-          normalize(
+          getDelegationCanonicalKey(
             feature.attributes
               ?.delegacion
           )
@@ -2237,7 +2275,7 @@ function getDelegationCatalogTerritory() {
 
       if (
         filters.delegation &&
-        !sameTerritory(
+        !sameDelegation(
           row.delegation,
           filters.delegation
         )
@@ -2253,7 +2291,9 @@ function getDelegationCatalogTerritory() {
       filtered
         .map(
           (row) =>
-            normalize(row.delegation)
+            getDelegationCanonicalKey(
+              row.delegation
+            )
         )
         .filter(Boolean)
     );
@@ -2301,7 +2341,7 @@ function getDelegationCatalogTerritory() {
 
         if (
           filters.delegation &&
-          !sameTerritory(
+          !sameDelegation(
             delegation,
             filters.delegation
           )
@@ -6785,14 +6825,22 @@ function buildDelegationMapGroups(features) {
       continue;
     }
 
-    const delegation =
+    const rawDelegation =
       String(
         row.delegacion ||
         "Sin delegación"
       ).trim();
 
     const delegationKey =
-      normalize(delegation);
+      getDelegationCanonicalKey(
+        rawDelegation
+      ) ||
+      normalize(rawDelegation);
+
+    const delegation =
+      getOfficialDelegationName(
+        rawDelegation
+      );
 
     if (!grouped.has(delegationKey)) {
       grouped.set(
@@ -8833,6 +8881,134 @@ function sameRegion(left, right) {
     rightNumber !== null &&
     leftNumber === rightNumber
   );
+}
+
+function getDelegationCanonicalKey(value = "") {
+  const text = normalizeTerritory(value);
+
+  if (!text) {
+    return "";
+  }
+
+  if (text.includes("SAN CARLOS ESTE")) {
+    return "D82E";
+  }
+
+  if (text.includes("SAN CARLOS OESTE")) {
+    return "D82O";
+  }
+
+  if (text.includes("RIO CUARTO")) {
+    return "D87";
+  }
+
+  if (text.includes("TARRAZU")) {
+    return "D45";
+  }
+
+  if (text.includes("SAN RAFAEL")) {
+    const match = text.match(/\bD\s*0*(\d{1,3})\b/);
+
+    if (match && Number(match[1]) === 53) {
+      return "D53";
+    }
+  }
+
+  const separated = text.match(
+    /^D\s*0*(\d{1,3})(?:\s+([A-Z]))?(?:\s|$)/
+  );
+
+  if (separated) {
+    return `D${Number(separated[1])}${separated[2] || ""}`;
+  }
+
+  const compact = normalize(value)
+    .replace(/[^A-Z0-9]/g, "");
+
+  const numeric = compact.match(
+    /^D0*(\d{1,3})/
+  );
+
+  return numeric
+    ? `D${Number(numeric[1])}`
+    : text;
+}
+
+function sameDelegation(left, right) {
+  const leftKey =
+    getDelegationCanonicalKey(left);
+
+  const rightKey =
+    getDelegationCanonicalKey(right);
+
+  return Boolean(
+    leftKey &&
+    rightKey &&
+    leftKey === rightKey
+  );
+}
+
+function getOfficialDelegationName(value = "") {
+  const key =
+    getDelegationCanonicalKey(value);
+
+  if (!key) {
+    return String(value || "").trim();
+  }
+
+  const matches =
+    (state.delegaciones || [])
+      .map((feature) => {
+        const attributes =
+          feature.attributes || {};
+
+        return getCatalogFieldValue(
+          attributes,
+          "delegacion",
+          "Delegacion",
+          "Delegación",
+          "DELEGACION",
+          "nombre_delegacion",
+          "NOMBRE_DELEGACION",
+          "nombre",
+          "Nombre",
+          "NOMBRE"
+        );
+      })
+      .filter(Boolean)
+      .filter(
+        (delegation) =>
+          getDelegationCanonicalKey(
+            delegation
+          ) === key
+      );
+
+  if (matches.length) {
+    return matches.sort((a, b) => {
+      const aHasSpace =
+        /\d\s+\D/.test(a) ? 1 : 0;
+
+      const bHasSpace =
+        /\d\s+\D/.test(b) ? 1 : 0;
+
+      if (aHasSpace !== bHasSpace) {
+        return bHasSpace - aHasSpace;
+      }
+
+      return a.length - b.length;
+    })[0];
+  }
+
+  const fallbacks = {
+    D82E: "D82E San Carlos Este",
+    D82O: "D82O San Carlos Oeste",
+    D87: "D87 Río Cuarto",
+    D45: "D45 Tarrazú",
+    D53: "D53 San Rafael"
+  };
+
+  return fallbacks[key] ||
+    String(value || "").trim();
 }
 
 function sameTerritory(left, right) {
