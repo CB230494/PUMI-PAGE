@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260723-2";
+import { ApiService } from "../services/api-service.js?v=20260723-3";
 
 const api = new ApiService();
 
@@ -458,10 +458,7 @@ async function loadData() {
 
     state.activityOptions =
       (activityOptions.options || [])
-        .filter(
-          (item) =>
-            numberValue(item.meta) > 0
-        );
+        .filter(isSelectableActivityOption);
 
     state.actividades =
       filterActivityFeaturesForCurrentRole(
@@ -546,6 +543,23 @@ function getRows() {
       ...(feature.attributes || {}),
       __geometry: feature.geometry || null
     }));
+}
+
+function isSelectableActivityOption(item = {}) {
+  const isVifaQuarterly =
+    normalize(item.programa) === "VIFA" &&
+    (
+      item.es_control_trimestral === true ||
+      normalize(item.control_trimestral) === "SI" ||
+      [16, 17, 18].includes(
+        numberValue(item.numero_actividad)
+      )
+    );
+
+  return (
+    numberValue(item.meta) > 0 ||
+    isVifaQuarterly
+  );
 }
 
 function hasPositiveMetaForActivity(program, activity) {
@@ -3748,8 +3762,7 @@ function setupActivityForm(editingRow) {
 
   const validOptions =
     state.activityOptions.filter(
-      (item) =>
-        numberValue(item.meta) > 0
+      isSelectableActivityOption
     );
 
   const programs = [
@@ -3778,7 +3791,7 @@ function setupActivityForm(editingRow) {
         (item) =>
           normalize(item.programa) ===
           normalize(program) &&
-          numberValue(item.meta) > 0
+          isSelectableActivityOption(item)
       );
 
     fillSelect(
