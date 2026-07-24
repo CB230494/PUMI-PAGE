@@ -1,193 +1,2462 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#002B7F" />
-  <title>PUMI 2026</title>
+import { env } from "../config/env.js";
+import { arcgis } from "../services/arcgis.service.js";
 
-  <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/light/main.css" />
-  <link rel="stylesheet" href="./css/app.css" />
+import {
+  buildActivityScope,
+  canManageUsers,
+  canReviewRegional,
+  canReviewNational
+} from "../services/scope.service.js";
 
-  <script src="https://js.arcgis.com/4.31/"></script>
-</head>
-<body>
-  <div id="app">
+import { HttpError } from "../utils/http-error.js";
 
-    <!-- =========================
-         PANTALLA DE INICIO
-    ========================== -->
-    <section id="login-view" class="login-view">
-      <div class="login-overlay"></div>
+/* =========================================================
+   UTILIDADES GENERALES
+========================================================= */
 
-      <div class="login-card">
-        <div class="login-brand">
-          <div class="brand-emblem">PUMI</div>
+function normalize(value) {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
 
-          <div>
-            <p class="eyebrow">Ministerio de Seguridad Pública</p>
-            <h1>Proceso Unificado para el Manejo de la Información</h1>
-            <p class="login-description">
-              Registro, revisión regional, validación nacional y seguimiento de actividades preventivas.
-            </p>
-          </div>
-        </div>
+function numberValue(value) {
+  const parsed = Number(value);
 
-        <div class="login-form-panel">
-          <div class="login-form-header">
-            <span class="login-badge">PUMI 2026</span>
-            <h2>Ingreso al sistema</h2>
-            <p>Acceda con el usuario y la contraseña asignados en PUMI.</p>
-          </div>
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
+}
 
-          <form id="login-form" class="login-fields">
-            <label class="login-input-group">
-              <span>Usuario PUMI</span>
-              <input id="login-username" type="text" autocomplete="username" placeholder="Digite su usuario" required>
-            </label>
+function stringValue(value) {
+  return String(value || "").trim();
+}
 
-            <label class="login-input-group">
-              <span>Contraseña</span>
-              <input id="login-password" type="password" autocomplete="current-password" placeholder="Digite su contraseña" required>
-            </label>
+function isHistorical(attributes = {}) {
+  return stringValue(
+    attributes.archivo_origen
+  ) !== "";
+}
 
-            <button id="btn-login" class="btn btn-primary btn-block" type="submit">
-              Ingresar a PUMI
-            </button>
-          </form>
+function isNationalApproved(attributes = {}) {
+  const status = normalize(
+    attributes.estado_nacional
+  );
 
-          <p class="login-security">
-            El acceso se valida mediante PUMI_USUARIOS y la conexión privada con ArcGIS.
-          </p>
-        </div>
-      </div>
-    </section>
+  return (
+    status.includes("VALIDAD") ||
+    status.includes("APROB")
+  );
+}
 
-    <!-- =========================
-         APLICACIÓN PRINCIPAL
-    ========================== -->
-    <section id="main-view" class="main-view hidden">
+function isRegionalApproved(attributes = {}) {
+  const status = normalize(
+    attributes.estado_regional
+  );
 
-      <aside class="sidebar">
-        <div class="sidebar-header">
-          <div class="sidebar-logo">PUMI</div>
-          <button id="btn-toggle-sidebar" class="icon-button" aria-label="Contraer menú">☰</button>
-        </div>
+  return (
+    status.includes("REVISAD") ||
+    status.includes("VERIFIC") ||
+    status.includes("APROB")
+  );
+}
 
-        <div class="sidebar-user">
-          <div class="avatar" id="sidebar-avatar">U</div>
-          <div>
-            <strong id="sidebar-user-name">Usuario</strong>
-            <small id="sidebar-user-role">Rol</small>
-          </div>
-        </div>
+function isRegionalReturned(attributes = {}) {
+  const status = normalize(
+    attributes.estado_regional
+  );
 
-        <nav id="sidebar-nav" class="sidebar-nav"></nav>
+  return (
+    status.includes("DEVUEL") ||
+    status.includes("OBSERV") ||
+    status.includes("RECHAZ")
+  );
+}
 
-        <div class="sidebar-footer">
-          <button id="btn-logout" class="btn btn-outline btn-block">Cerrar sesión</button>
-        </div>
-      </aside>
+function isNationalObserved(attributes = {}) {
+  const status = normalize(
+    attributes.estado_nacional
+  );
 
-      <div class="page-shell">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">Sistema institucional</p>
-            <h1 id="page-title">Panel principal</h1>
-            <p id="page-scope" class="page-scope"></p>
-          </div>
+  return (
+    status.includes("OBSERV") ||
+    status.includes("RECHAZ")
+  );
+}
 
-          <div class="topbar-actions">
-            <button id="btn-refresh" class="btn btn-secondary">Actualizar</button>
+function isRejected(attributes = {}) {
+  return (
+    isRegionalReturned(attributes) ||
+    isNationalObserved(attributes)
+  );
+}
 
-            <button id="btn-open-notifications" class="notification-button" aria-label="Notificaciones">
-              🔔
-              <span id="notification-count" class="notification-count hidden">0</span>
-            </button>
-          </div>
-        </header>
+function activityKey(program, activity) {
+  return (
+    `${normalize(program)}|||${normalize(activity)}`
+  );
+}
 
-        <main id="content-area" class="content-area">
-          <section id="dashboard-page" class="page active">
-            <div class="hero-card">
-              <div>
-                <span class="hero-label">Panel según perfil</span>
-                <h2 id="welcome-title">Bienvenido</h2>
-                <p id="welcome-text">
-                  Consulte el avance, los registros pendientes y la información que corresponde a su nivel de acceso.
-                </p>
-              </div>
-              <div class="hero-badge">
-                <span>Estado</span>
-                <strong>Conectado</strong>
-              </div>
-            </div>
+function delegationKey(delegation) {
+  return normalize(delegation);
+}
 
-            <div id="dashboard-kpis" class="kpi-grid"></div>
+function delegationCode(value) {
+  const compact = normalize(value).replace(/[^A-Z0-9]/g, "");
+  const match = compact.match(/^D0*(\d{1,3})/);
 
-            <div class="dashboard-grid">
-              <article class="panel-card">
-                <div class="panel-header">
-                  <div>
-                    <span class="panel-kicker">Seguimiento</span>
-                    <h3>Registros por programa</h3>
-                  </div>
-                </div>
-                <div id="program-summary" class="bar-list"></div>
-              </article>
+  if (!match) {
+    return compact;
+  }
 
-              <article class="panel-card">
-                <div class="panel-header">
-                  <div>
-                    <span class="panel-kicker">Flujo</span>
-                    <h3>Estados de revisión</h3>
-                  </div>
-                </div>
-                <div id="status-summary" class="bar-list"></div>
-              </article>
-            </div>
+  return `D${String(Number(match[1])).padStart(2, "0")}`;
+}
 
-            <article class="panel-card">
-              <div class="panel-header">
-                <div>
-                  <span class="panel-kicker">Ubicación</span>
-                  <h3>Mapa de actividades</h3>
-                </div>
-              </div>
-              <div id="dashboard-map" class="map-container"></div>
-            </article>
-          </section>
+function sameDelegation(left, right) {
+  const leftCode = delegationCode(left);
+  const rightCode = delegationCode(right);
 
-          <section id="coming-page" class="page">
-            <article class="panel-card empty-state">
-              <div class="empty-icon">🛠️</div>
-              <h2 id="coming-title">Módulo en construcción</h2>
-              <p id="coming-description">
-                Este espacio quedará conectado al módulo correspondiente en la siguiente etapa.
-              </p>
-            </article>
-          </section>
-        </main>
-      </div>
+  if (leftCode && rightCode && leftCode === rightCode) {
+    return true;
+  }
 
-      <!-- NOTIFICACIONES -->
-      <aside id="notifications-drawer" class="notifications-drawer hidden">
-        <div class="drawer-header">
-          <div>
-            <span class="panel-kicker">Bandeja interna</span>
-            <h3>Notificaciones</h3>
-          </div>
-          <button id="btn-close-notifications" class="icon-button">✕</button>
-        </div>
-        <div id="notifications-list" class="notifications-list"></div>
-      </aside>
+  return normalize(left) === normalize(right);
+}
 
-      <div id="drawer-backdrop" class="drawer-backdrop hidden"></div>
-    </section>
+function isVifaProgram(value) {
+  const program = normalize(value);
+  return program === "VIFA" || program === "VIF";
+}
 
-    <div id="toast" class="toast hidden"></div>
-  </div>
+function isVifaRegistrationOpen(option = {}) {
+  const quarterly =
+    normalize(option.tipo_medicion) === "TRIMESTRAL" ||
+    normalize(option.control_trimestral) === "SI" ||
+    [16, 17, 18].includes(numberValue(option.numero_actividad));
 
-  <script type="module" src="./js/app.js?v=20260723-4"></script>
-</body>
-</html>
+  if (quarterly) {
+    return true;
+  }
+
+  const month = numberValue(option.numero_mes);
+  return month >= 8 && month <= 12;
+}
+
+function assertVifaRegistrationOpen(option = {}, quarter = "") {
+  const quarterly =
+    normalize(option.tipo_medicion) === "TRIMESTRAL" ||
+    normalize(option.control_trimestral) === "SI" ||
+    [16, 17, 18].includes(numberValue(option.numero_actividad));
+
+  if (quarterly) {
+    const normalizedQuarter = normalize(quarter);
+
+    if (!["T3", "T4"].includes(normalizedQuarter)) {
+      throw new HttpError(
+        409,
+        "En VIFA, T1 y T2 están cerrados y disponibles únicamente para consulta. Solo se permite registrar T3 o T4."
+      );
+    }
+
+    return;
+  }
+
+  if (!isVifaRegistrationOpen(option)) {
+    throw new HttpError(
+      409,
+      "Esta actividad VIFA corresponde a un periodo cerrado. En 2026 solo se permite registrar actividades programadas de agosto a diciembre."
+    );
+  }
+}
+
+function workflowStatus(attributes = {}) {
+  if (isHistorical(attributes)) {
+    return "Revisado";
+  }
+
+  const flow = normalize(
+    attributes.estado_flujo
+  );
+
+  if (flow === "BORRADOR") {
+    return "Borrador";
+  }
+
+  if (flow === "PENDIENTE_REGIONAL") {
+    return "Pendiente regional";
+  }
+
+  if (flow === "DEVUELTO_REGIONAL") {
+    return "Devuelto regional";
+  }
+
+  if (flow === "PENDIENTE_NACIONAL") {
+    return "Pendiente nacional";
+  }
+
+  if (flow === "VALIDADO_NACIONAL") {
+    return "Validado nacional";
+  }
+
+  if (flow === "NO_VALIDADO_NACIONAL") {
+    return "No validado nacional";
+  }
+
+  if (flow === "ELIMINADO") {
+    return "Eliminado";
+  }
+
+  if (isNationalApproved(attributes)) {
+    return "Validado nacional";
+  }
+
+  if (isNationalObserved(attributes)) {
+    return "Observado nacional";
+  }
+
+  if (isRegionalReturned(attributes)) {
+    return "Devuelto regional";
+  }
+
+  if (isRegionalApproved(attributes)) {
+    return "Pendiente nacional";
+  }
+
+  return "Pendiente regional";
+}
+
+function validateObjectId(value) {
+  const objectId = Number(value);
+
+  if (!Number.isInteger(objectId)) {
+    throw new HttpError(
+      400,
+      "OBJECTID inválido."
+    );
+  }
+
+  return objectId;
+}
+
+
+function hasOwn(object, field) {
+  return Object.prototype.hasOwnProperty.call(object || {}, field);
+}
+
+function integerValue(value, label) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0) {
+    throw new HttpError(400, `${label} debe ser un número entero igual o mayor que cero.`);
+  }
+  return parsed;
+}
+
+function requireText(attributes, field, label) {
+  const value = stringValue(attributes[field]);
+  if (!value) throw new HttpError(400, `Debe completar ${label}.`);
+  attributes[field] = value;
+  return value;
+}
+
+function sanitizeWritableFields(attributes = {}) {
+  const allowed = [
+    "fecha_actividad","hora_actividad","programa","actividad","responsable",
+    "avance_realizado","provincia","canton","distrito","tipo_lugar",
+    "otro_tipo_lugar","centro_educativo","codigo_presupuestario",
+    "direccion_mapa","latitud","longitud","cantidad_participantes",
+    "cantidad_hombres","cantidad_mujeres","cantidad_menores_10",
+    "edad_10_18","edad_19_30","edad_31_45","edad_46_mas",
+    "cantidad_discapacidad","cantidad_indigenas","instituciones",
+    "otras_instituciones","numero_seguimiento","tipo_seguimiento",
+    "numero_consecutivo","observaciones","id_planificacion_vifa",
+    "codigo_actividad_vifa","eje_vifa","plan_asociado_vifa",
+    "poblacion_objetivo_vifa","mes_programado_vifa",
+    "trimestre_programado_vifa","tipo_medicion_vifa",
+    "linea_base_vifa","trimestre_ejecucion_vifa","formulario_vifa",
+    "fecha_formulario_vifa","numero_formulario_vifa"
+  ];
+  return Object.fromEntries(
+    Object.entries(attributes).filter(([field]) => allowed.includes(field))
+  );
+}
+
+function validateActivityPayload(attributes, current = {}) {
+  const merged = { ...current, ...attributes };
+
+  [
+    ["programa","el programa"],["actividad","la actividad"],
+    ["responsable","el responsable"],["provincia","la provincia"],
+    ["canton","el cantón"],["distrito","el distrito"],
+    ["tipo_lugar","el tipo de lugar"],
+    ["tipo_seguimiento","el tipo de seguimiento"],
+    ["numero_consecutivo","el número consecutivo"]
+  ].forEach(([field,label]) => requireText(merged, field, label));
+
+  if (isVifaProgram(merged.programa)) {
+    requireText(merged, "id_planificacion_vifa", "la planificación VIFA");
+    requireText(merged, "codigo_actividad_vifa", "el código de actividad VIFA");
+
+    if (normalize(merged.tipo_medicion_vifa) === "TRIMESTRAL") {
+      const quarter = normalize(merged.trimestre_ejecucion_vifa);
+      if (!["T1", "T2", "T3", "T4"].includes(quarter)) {
+        throw new HttpError(400, "Debe seleccionar el trimestre de ejecución VIFA.");
+      }
+      merged.trimestre_ejecucion_vifa = quarter;
+    }
+  }
+
+  const fields = {
+    cantidad_hombres: integerValue(merged.cantidad_hombres ?? 0, "La cantidad de hombres"),
+    cantidad_mujeres: integerValue(merged.cantidad_mujeres ?? 0, "La cantidad de mujeres"),
+    cantidad_menores_10: integerValue(merged.cantidad_menores_10 ?? 0, "La cantidad de personas menores de 10 años"),
+    edad_10_18: integerValue(merged.edad_10_18 ?? 0, "La cantidad de personas de 10 a 18 años"),
+    edad_19_30: integerValue(merged.edad_19_30 ?? 0, "La cantidad de personas de 19 a 30 años"),
+    edad_31_45: integerValue(merged.edad_31_45 ?? 0, "La cantidad de personas de 31 a 45 años"),
+    edad_46_mas: integerValue(merged.edad_46_mas ?? 0, "La cantidad de personas de 46 años o más"),
+    cantidad_discapacidad: integerValue(merged.cantidad_discapacidad ?? 0, "La cantidad de personas con discapacidad"),
+    cantidad_indigenas: integerValue(merged.cantidad_indigenas ?? 0, "La cantidad de personas indígenas participantes")
+  };
+
+  const totalBySex = fields.cantidad_hombres + fields.cantidad_mujeres;
+  const totalByAge = fields.cantidad_menores_10 + fields.edad_10_18 +
+    fields.edad_19_30 + fields.edad_31_45 + fields.edad_46_mas;
+  const total = hasOwn(merged, "cantidad_participantes")
+    ? integerValue(merged.cantidad_participantes, "La cantidad total de participantes")
+    : totalBySex;
+
+  if (total !== totalBySex) {
+    throw new HttpError(400, `El total de participantes es ${total}, pero hombres y mujeres suman ${totalBySex}.`);
+  }
+  if (total !== totalByAge) {
+    throw new HttpError(400, `El total de participantes es ${total}, pero los rangos de edad suman ${totalByAge}.`);
+  }
+  if (fields.cantidad_discapacidad > total) {
+    throw new HttpError(400, "La cantidad de personas con discapacidad no puede superar el total de participantes.");
+  }
+  if (fields.cantidad_indigenas > total) {
+    throw new HttpError(400, "La cantidad de personas indígenas participantes no puede superar el total de participantes.");
+  }
+
+  const tipoLugar = stringValue(merged.tipo_lugar);
+  const otroTipoLugar = stringValue(merged.otro_tipo_lugar);
+  if (normalize(tipoLugar) === "OTRO" && !otroTipoLugar) {
+    throw new HttpError(400, "Debe especificar el otro tipo de lugar.");
+  }
+
+  const instituciones = stringValue(merged.instituciones);
+  const otrasInstituciones = stringValue(merged.otras_instituciones);
+  const institutionTokens = normalize(instituciones).split(/[;,|]/).map(v => v.trim());
+  if (institutionTokens.includes("OTRA") && !otrasInstituciones) {
+    throw new HttpError(400, "Debe especificar la otra institución participante.");
+  }
+
+  const date = Number(merged.fecha_actividad);
+  if (!Number.isFinite(date) || date <= 0) {
+    throw new HttpError(400, "Debe indicar una fecha válida para la actividad.");
+  }
+
+  return {
+    ...attributes,
+    programa: stringValue(merged.programa),
+    actividad: stringValue(merged.actividad),
+    responsable: stringValue(merged.responsable),
+    provincia: stringValue(merged.provincia),
+    canton: stringValue(merged.canton),
+    distrito: stringValue(merged.distrito),
+    tipo_lugar: tipoLugar,
+    otro_tipo_lugar: normalize(tipoLugar) === "OTRO" ? otroTipoLugar : "",
+    instituciones,
+    otras_instituciones: otrasInstituciones,
+    tipo_seguimiento: stringValue(merged.tipo_seguimiento),
+    numero_consecutivo: stringValue(merged.numero_consecutivo),
+    numero_seguimiento: `${stringValue(merged.tipo_seguimiento)}: ${stringValue(merged.numero_consecutivo)}`,
+    fecha_actividad: date,
+    cantidad_participantes: total,
+    ...fields
+  };
+}
+
+function validateCoordinates(attributes, geometry) {
+  const latitude = Number(attributes.latitud ?? geometry?.y);
+  const longitude = Number(attributes.longitud ?? geometry?.x);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+      latitude === 0 || longitude === 0 ||
+      latitude < -90 || latitude > 90 ||
+      longitude < -180 || longitude > 180) {
+    throw new HttpError(400, "Debe marcar una ubicación válida en el mapa o utilizar el GPS.");
+  }
+  attributes.latitud = latitude;
+  attributes.longitud = longitude;
+  return { x: longitude, y: latitude, spatialReference: { wkid: 4326 } };
+}
+
+/* =========================================================
+   ACTIVIDADES
+========================================================= */
+
+export async function getActivities(req, res) {
+  const scope = buildActivityScope(
+    req.user
+  );
+
+  const extra = stringValue(
+    req.query.where
+  );
+
+  const activeScope =
+    `(${scope}) AND (estado_registro IS NULL OR estado_registro <> 'ELIMINADO')`;
+
+  const where = extra
+    ? `(${activeScope}) AND (${extra})`
+    : activeScope;
+
+  const features = await arcgis.query(
+    env.layers.actividades,
+    {
+      where,
+      returnGeometry: true,
+      orderByFields: "OBJECTID DESC"
+    }
+  );
+
+  res.json({
+    ok: true,
+    features
+  });
+}
+
+/* =========================================================
+   DETALLE COMPLETO DE UNA ACTIVIDAD
+========================================================= */
+
+export async function getActivityDetail(req, res) {
+  const objectId = validateObjectId(
+    req.params.objectId
+  );
+
+  const feature = await getScopedActivity(
+    req.user,
+    objectId
+  );
+
+  const attributes =
+    feature.attributes || {};
+
+  const progress = await getActivityProgress(
+    req.user,
+    attributes.programa,
+    attributes.actividad,
+    attributes.delegacion
+  );
+
+  res.json({
+    ok: true,
+
+    feature: {
+      ...feature,
+
+      workflow_status:
+        workflowStatus(attributes),
+
+      historical:
+        isHistorical(attributes),
+
+      progress
+    }
+  });
+}
+
+/* =========================================================
+   ACTIVIDADES DISPONIBLES SEGÚN META
+========================================================= */
+
+export async function getActivityOptions(req, res, next) {
+  try {
+    const options = await calculateOptions(req.user);
+
+    res.json({
+      ok: true,
+      options
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+/* =========================================================
+   PLANIFICACIÓN VIFA SEGÚN DELEGACIÓN
+========================================================= */
+
+export async function getVifaOptions(req, res, next) {
+  try {
+    const options = await calculateVifaOptions(req.user);
+
+    res.json({
+      ok: true,
+      program: "VIFA",
+      delegation: req.user.delegation || null,
+      total: options.length,
+      options
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* =========================================================
+   CREAR ACTIVIDAD
+========================================================= */
+
+export async function createActivity(req, res) {
+  const user = req.user;
+  const role = normalize(user.role);
+
+  if (!role.includes("DELEG")) {
+    throw new HttpError(403, "Solo las delegaciones pueden registrar actividades.");
+  }
+
+  let attributes = sanitizeWritableFields(req.body.attributes || {});
+  attributes = validateActivityPayload(attributes);
+
+  let cantidad = integerValue(attributes.avance_realizado, "El avance realizado");
+
+  const options = await calculateOptions(user);
+  const selected = options.find(
+    (item) =>
+      normalize(item.programa) === normalize(attributes.programa) &&
+      normalize(item.actividad) === normalize(attributes.actividad)
+  );
+
+  if (!selected) {
+    throw new HttpError(
+      400,
+      "La actividad no corresponde a esta delegación o su meta es igual a cero."
+    );
+  }
+
+  if (isVifaProgram(attributes.programa)) {
+    assertVifaRegistrationOpen(
+      selected,
+      attributes.trimestre_ejecucion_vifa
+    );
+  }
+
+  if (selected.es_control_trimestral) {
+    const quarter = normalize(attributes.trimestre_ejecucion_vifa);
+    const quarterNumber = Number(quarter.replace("T", ""));
+    const fulfilled = numberValue(selected[`cumplimiento_t${quarterNumber}`]) > 0;
+    const inReview = numberValue(selected[`en_revision_t${quarterNumber}`]) > 0;
+
+    if (fulfilled) {
+      throw new HttpError(409, `La actividad ya está cumplida para ${quarter}.`);
+    }
+    if (inReview) {
+      throw new HttpError(409, `Ya existe un registro en revisión para ${quarter}.`);
+    }
+    cantidad = 1;
+  } else {
+    if (cantidad <= 0) {
+      throw new HttpError(400, "El avance realizado debe ser mayor a cero.");
+    }
+    if (selected.disponible_registro <= 0) {
+      throw new HttpError(409, "Esta actividad ya alcanzó el 100% de su línea base o tiene todo el pendiente en revisión.");
+    }
+    if (cantidad > selected.disponible_registro) {
+      throw new HttpError(400, `No puede registrar ${cantidad}. El pendiente disponible es ${selected.disponible_registro}.`);
+    }
+  }
+
+  attributes.avance_realizado = cantidad;
+
+  if (isVifaProgram(attributes.programa)) {
+    Object.assign(attributes, {
+      id_planificacion_vifa: selected.id_planificacion,
+      codigo_actividad_vifa: selected.codigo_actividad,
+      eje_vifa: selected.eje,
+      plan_asociado_vifa: selected.plan_asociado,
+      poblacion_objetivo_vifa: selected.poblacion_objetivo,
+      mes_programado_vifa: selected.mes_programado,
+      trimestre_programado_vifa: selected.trimestre_programado,
+      tipo_medicion_vifa: selected.tipo_medicion,
+      linea_base_vifa: numberValue(selected.linea_base)
+    });
+  }
+
+  const geometry = validateCoordinates(attributes, req.body.geometry || null);
+  const idPumi = Date.now();
+
+  Object.assign(attributes, {
+    id_pumi: idPumi,
+    archivo_origen: "",
+    fecha_migracion: Date.now(),
+    direccion_regional: user.region,
+    delegacion: user.delegation,
+    usuario_registra: user.username,
+    meta: 0,
+    avance: 0,
+    pendiente: 0,
+    porcentaje_cumplimiento: 0,
+    estado_flujo: "BORRADOR",
+    fecha_confirmacion_envio: null,
+    usuario_confirma_envio: "",
+    estado_registro: "ACTIVO",
+    fecha_cierre: null,
+    fecha_eliminacion: null,
+    usuario_elimina: "",
+    motivo_eliminacion: "",
+    estado_regional: "Borrador",
+    observacion_regional: "",
+    coordinador_regional: "",
+    fecha_revision_regional: null,
+    estado_nacional: "Pendiente",
+    observacion_nacional: "",
+    coordinador_nacional: "",
+    fecha_revision_nacional: null
+  });
+
+  const result = await arcgis.add(env.layers.actividades, attributes, geometry);
+
+  await writeLog(
+    user,
+    idPumi,
+    "CREACION",
+    `Actividad registrada: ${attributes.programa} - ${attributes.actividad}`
+  );
+
+  res.status(201).json({
+    ok: true,
+    result,
+    id_pumi: idPumi,
+    message: "Actividad guardada como borrador."
+  });
+}
+
+
+/* =========================================================
+   CONFIRMAR ENVÍO A REVISIÓN REGIONAL
+========================================================= */
+
+export async function confirmActivitySubmission(req, res) {
+  const objectId =
+    validateObjectId(
+      req.params.objectId
+    );
+
+  const feature =
+    await getScopedActivity(
+      req.user,
+      objectId
+    );
+
+  const current =
+    feature.attributes || {};
+
+  if (isHistorical(current)) {
+    throw new HttpError(
+      403,
+      "Los registros históricos no pueden enviarse."
+    );
+  }
+
+  const role =
+    normalize(req.user.role);
+
+  if (!role.includes("DELEG")) {
+    throw new HttpError(
+      403,
+      "Solo la delegación puede confirmar el envío."
+    );
+  }
+
+  const flow =
+    normalize(current.estado_flujo);
+
+  if (
+    !["BORRADOR", "DEVUELTO_REGIONAL"].includes(flow)
+  ) {
+    throw new HttpError(
+      409,
+      "Este registro ya fue enviado y no puede confirmarse nuevamente."
+    );
+  }
+
+  const now =
+    Date.now();
+
+  const updates = {
+    estado_flujo:
+      "PENDIENTE_REGIONAL",
+
+    fecha_confirmacion_envio:
+      now,
+
+    usuario_confirma_envio:
+      req.user.username,
+
+    estado_registro:
+      "ACTIVO",
+
+    estado_regional:
+      "Pendiente de revisión regional",
+
+    observacion_regional:
+      "",
+
+    coordinador_regional:
+      "",
+
+    fecha_revision_regional:
+      null
+  };
+
+  const result =
+    await arcgis.update(
+      env.layers.actividades,
+      objectId,
+      updates
+    );
+
+  await writeLog(
+    req.user,
+    current.id_pumi || objectId,
+    "CONFIRMACION_ENVIO",
+    "Actividad enviada a revisión regional"
+  );
+
+  res.json({
+    ok: true,
+    result,
+    workflow_status:
+      "Pendiente regional",
+    message:
+      "Envío confirmado. Ya no podrá editar ni eliminar el registro mientras esté en revisión."
+  });
+}
+
+/* =========================================================
+   ACTUALIZAR ACTIVIDAD
+========================================================= */
+
+export async function updateActivity(req, res) {
+  const objectId = validateObjectId(req.params.objectId);
+  const feature = await getScopedActivity(req.user, objectId);
+  const current = feature.attributes || {};
+
+  if (isHistorical(current)) {
+    throw new HttpError(403, "Los registros históricos no pueden modificarse desde este módulo.");
+  }
+
+  const role = normalize(req.user.role);
+
+  if (role.includes("DELEG")) {
+    const flow =
+      normalize(
+        current.estado_flujo
+      );
+
+    const canEdit =
+      ["BORRADOR", "DEVUELTO_REGIONAL"].includes(
+        flow
+      );
+
+    if (!canEdit) {
+      throw new HttpError(
+        409,
+        "No puede editar este registro porque ya fue enviado a revisión."
+      );
+    }
+  }
+
+  if (role.includes("REGIONAL") && isNationalApproved(current)) {
+    throw new HttpError(
+      409,
+      "No puede editar este registro porque ya fue validado nacionalmente."
+    );
+  }
+
+  if (role.includes("COORDIN") && !role.includes("REGIONAL")) {
+    throw new HttpError(
+      403,
+      "El Coordinador Nacional no puede modificar directamente los datos registrados."
+    );
+  }
+
+  let updates = sanitizeWritableFields(req.body.attributes || {});
+  updates = validateActivityPayload(updates, current);
+
+  let requestedQuantity = integerValue(
+    updates.avance_realizado ?? current.avance_realizado,
+    "El avance realizado"
+  );
+
+  const options = await calculateOptions(req.user);
+  const selected = options.find(
+    (item) =>
+      normalize(item.programa) === normalize(updates.programa ?? current.programa) &&
+      normalize(item.actividad) === normalize(updates.actividad ?? current.actividad)
+  );
+
+  if (!selected) {
+    throw new HttpError(
+      400,
+      "La actividad no corresponde al ámbito del usuario o su meta es igual a cero."
+    );
+  }
+
+  if (isVifaProgram(updates.programa ?? current.programa)) {
+    assertVifaRegistrationOpen(
+      selected,
+      updates.trimestre_ejecucion_vifa ?? current.trimestre_ejecucion_vifa
+    );
+  }
+
+  if (selected.es_control_trimestral) {
+    requestedQuantity = 1;
+  } else {
+    if (requestedQuantity <= 0) {
+      throw new HttpError(400, "El avance realizado debe ser mayor a cero.");
+    }
+    const currentQuantity = numberValue(current.avance_realizado);
+    const maximumAllowed = selected.disponible_registro + currentQuantity;
+    if (requestedQuantity > maximumAllowed) {
+      throw new HttpError(400, `No puede guardar un avance de ${requestedQuantity}. El máximo permitido para este registro es ${maximumAllowed}.`);
+    }
+  }
+
+  updates.avance_realizado = requestedQuantity;
+
+  if (isVifaProgram(updates.programa ?? current.programa)) {
+    Object.assign(updates, {
+      id_planificacion_vifa: selected.id_planificacion,
+      codigo_actividad_vifa: selected.codigo_actividad,
+      eje_vifa: selected.eje,
+      plan_asociado_vifa: selected.plan_asociado,
+      poblacion_objetivo_vifa: selected.poblacion_objetivo,
+      mes_programado_vifa: selected.mes_programado,
+      trimestre_programado_vifa: selected.trimestre_programado,
+      tipo_medicion_vifa: selected.tipo_medicion,
+      linea_base_vifa: numberValue(selected.linea_base)
+    });
+  }
+
+  if (hasOwn(updates, "latitud") || hasOwn(updates, "longitud")) {
+    validateCoordinates(updates, null);
+  }
+
+  const result = await arcgis.update(env.layers.actividades, objectId, updates);
+
+  await writeLog(
+    req.user,
+    current.id_pumi || objectId,
+    "ACTUALIZACION",
+    "Actividad actualizada"
+  );
+
+  res.json({
+    ok: true,
+    result,
+    message: "Actividad actualizada correctamente."
+  });
+}
+
+/* =========================================================
+   ELIMINAR ACTIVIDAD
+========================================================= */
+
+export async function deleteActivity(req, res) {
+  const objectId = validateObjectId(
+    req.params.objectId
+  );
+
+  const feature = await getScopedActivity(
+    req.user,
+    objectId
+  );
+
+  const current =
+    feature.attributes || {};
+
+  if (isHistorical(current)) {
+    throw new HttpError(
+      403,
+      "Los registros históricos no pueden eliminarse."
+    );
+  }
+
+  const role = normalize(
+    req.user.role
+  );
+
+  if (role.includes("DELEG")) {
+    const flow =
+      normalize(
+        current.estado_flujo
+      );
+
+    const canDelete =
+      [
+        "BORRADOR",
+        "DEVUELTO_REGIONAL",
+        "NO_VALIDADO_NACIONAL"
+      ].includes(flow);
+
+    if (!canDelete) {
+      throw new HttpError(
+        409,
+        "No puede eliminar este registro porque se encuentra en revisión o ya fue validado."
+      );
+    }
+  }
+
+  if (
+    role.includes("COORDIN") &&
+    !role.includes("REGIONAL")
+  ) {
+    throw new HttpError(
+      403,
+      "El Coordinador Nacional no puede eliminar registros."
+    );
+  }
+
+  const currentFlow =
+    normalize(
+      current.estado_flujo
+    );
+
+  if (currentFlow === "VALIDADO_NACIONAL") {
+    throw new HttpError(
+      409,
+      "No puede eliminar este registro porque ya fue validado nacionalmente."
+    );
+  }
+
+  const idPumi =
+    current.id_pumi || objectId;
+
+  const now =
+    Date.now();
+
+  const result =
+    await arcgis.update(
+      env.layers.actividades,
+      objectId,
+      {
+        estado_flujo:
+          "ELIMINADO",
+
+        estado_registro:
+          "ELIMINADO",
+
+        fecha_eliminacion:
+          now,
+
+        usuario_elimina:
+          req.user.username,
+
+        motivo_eliminacion:
+          stringValue(
+            req.body?.reason ||
+            "Eliminado por el usuario"
+          )
+      }
+    );
+
+  await writeLog(
+    req.user,
+    idPumi,
+    "ELIMINACION_LOGICA",
+    "Actividad marcada como eliminada"
+  );
+
+  res.json({
+    ok: true,
+    result,
+
+    message:
+      "Actividad eliminada correctamente."
+  });
+}
+
+/* =========================================================
+   BANDEJA REGIONAL
+========================================================= */
+
+export async function getRegionalReviewQueue(req, res) {
+  if (!canReviewRegional(req.user)) {
+    throw new HttpError(
+      403,
+      "No tiene permiso para consultar la bandeja regional."
+    );
+  }
+
+  const scope = buildActivityScope(
+    req.user
+  );
+
+  const features = await arcgis.query(
+    env.layers.actividades,
+    {
+      where: scope,
+      returnGeometry: true,
+      orderByFields:
+        "fecha_migracion DESC, OBJECTID DESC"
+    }
+  );
+
+  const records = features
+    .filter((feature) => {
+      const row =
+        feature.attributes || {};
+
+      return (
+        !isHistorical(row) &&
+        normalize(row.estado_registro) !== "ELIMINADO" &&
+        normalize(row.estado_flujo) === "PENDIENTE_REGIONAL"
+      );
+    })
+    .map((feature) => ({
+      ...feature,
+
+      workflow_status:
+        workflowStatus(
+          feature.attributes || {}
+        )
+    }));
+
+  const filters = buildReviewFilters(
+    records
+  );
+
+  const pending = records.filter(
+    (feature) =>
+      workflowStatus(
+        feature.attributes || {}
+      ) === "Pendiente regional"
+  );
+
+  res.json({
+    ok: true,
+
+    level: "REGIONAL",
+
+    total: records.length,
+
+    pending_count: pending.length,
+
+    filters,
+
+    features: records
+  });
+}
+
+/* =========================================================
+   BANDEJA COORDINADOR NACIONAL
+========================================================= */
+
+export async function getNationalReviewQueue(req, res) {
+  if (!canReviewNational(req.user)) {
+    throw new HttpError(
+      403,
+      "No tiene permiso para consultar la bandeja nacional."
+    );
+  }
+
+  const scope = buildActivityScope(
+    req.user
+  );
+
+  const features = await arcgis.query(
+    env.layers.actividades,
+    {
+      where: scope,
+      returnGeometry: true,
+      orderByFields:
+        "fecha_revision_regional DESC, OBJECTID DESC"
+    }
+  );
+
+  /*
+   * Nacional solo recibe registros que ya pasaron
+   * revisión regional.
+   */
+  const records = features
+    .filter((feature) => {
+      const row =
+        feature.attributes || {};
+
+      if (isHistorical(row)) {
+        return false;
+      }
+
+      return (
+        normalize(row.estado_registro) !== "ELIMINADO" &&
+        normalize(row.estado_flujo) === "PENDIENTE_NACIONAL"
+      );
+    })
+    .map((feature) => ({
+      ...feature,
+
+      workflow_status:
+        workflowStatus(
+          feature.attributes || {}
+        )
+    }));
+
+  const pending = records.filter(
+    (feature) => {
+      const status = workflowStatus(
+        feature.attributes || {}
+      );
+
+      return (
+        status === "Pendiente nacional" ||
+        status === "Observado nacional"
+      );
+    }
+  );
+
+  const filters = buildReviewFilters(
+    records
+  );
+
+  res.json({
+    ok: true,
+
+    level: "NACIONAL",
+
+    program:
+      req.user.program || null,
+
+    total: records.length,
+
+    pending_count: pending.length,
+
+    filters,
+
+    features: records
+  });
+}
+
+/* =========================================================
+   REVISIÓN REGIONAL
+========================================================= */
+
+export async function regionalReview(req, res) {
+  if (!canReviewRegional(req.user)) {
+    throw new HttpError(
+      403,
+      "No tiene permiso para revisión regional."
+    );
+  }
+
+  const objectId = validateObjectId(
+    req.params.objectId
+  );
+
+  const feature = await getScopedActivity(
+    req.user,
+    objectId
+  );
+
+  const current =
+    feature.attributes || {};
+
+  if (isHistorical(current)) {
+    throw new HttpError(
+      400,
+      "El registro histórico ya fue revisado."
+    );
+  }
+
+  if (isNationalApproved(current)) {
+    throw new HttpError(
+      409,
+      "El registro ya fue validado nacionalmente."
+    );
+  }
+
+  const status = stringValue(
+    req.body.status
+  );
+
+  const observations = stringValue(
+    req.body.observations
+  );
+
+  const normalizedStatus =
+    normalize(status);
+
+  const approved =
+    normalizedStatus.includes("REVIS") ||
+    normalizedStatus.includes("VERIFIC") ||
+    normalizedStatus.includes("APROB");
+
+  if (
+    !approved &&
+    !observations
+  ) {
+    throw new HttpError(
+      400,
+      "Debe indicar una observación para devolver el registro a la delegación."
+    );
+  }
+
+  const updates = approved
+    ? {
+        estado_flujo:
+          "PENDIENTE_NACIONAL",
+
+        estado_regional:
+          "Revisado regional",
+
+        observacion_regional:
+          observations,
+
+        coordinador_regional:
+          req.user.name ||
+          req.user.username,
+
+        fecha_revision_regional:
+          Date.now(),
+
+        estado_nacional:
+          "Pendiente de validación nacional",
+
+        observacion_nacional:
+          "",
+
+        coordinador_nacional:
+          "",
+
+        fecha_revision_nacional:
+          null
+      }
+    : {
+        estado_flujo:
+          "DEVUELTO_REGIONAL",
+
+        estado_regional:
+          "Devuelto regional",
+
+        observacion_regional:
+          observations,
+
+        coordinador_regional:
+          req.user.name ||
+          req.user.username,
+
+        fecha_revision_regional:
+          Date.now(),
+
+        estado_nacional:
+          "Pendiente",
+
+        observacion_nacional:
+          "",
+
+        coordinador_nacional:
+          "",
+
+        fecha_revision_nacional:
+          null
+      };
+
+  const result = await arcgis.update(
+    env.layers.actividades,
+    objectId,
+    updates
+  );
+
+  await writeValidation(
+    req.user,
+    current.id_pumi || objectId,
+    "REGIONAL",
+    updates.estado_regional,
+    observations
+  );
+
+  await writeLog(
+    req.user,
+    current.id_pumi || objectId,
+    "REVISION_REGIONAL",
+    `${updates.estado_regional}: ${observations}`
+  );
+
+  res.json({
+    ok: true,
+    result,
+
+    workflow_status:
+      approved
+        ? "Pendiente nacional"
+        : "Devuelto regional",
+
+    message:
+      approved
+        ? "Actividad enviada a validación nacional."
+        : "Actividad devuelta a la delegación."
+  });
+}
+
+/* =========================================================
+   VALIDACIÓN NACIONAL
+========================================================= */
+
+export async function nationalReview(req, res) {
+  if (!canReviewNational(req.user)) {
+    throw new HttpError(
+      403,
+      "No tiene permiso para validación nacional."
+    );
+  }
+
+  const objectId = validateObjectId(
+    req.params.objectId
+  );
+
+  const feature = await getScopedActivity(
+    req.user,
+    objectId
+  );
+
+  const current =
+    feature.attributes || {};
+
+  if (isHistorical(current)) {
+    throw new HttpError(
+      400,
+      "El registro histórico ya fue revisado."
+    );
+  }
+
+  /*
+   * Nacional no puede revisar directamente
+   * un registro que Regional todavía no revisó.
+   */
+  if (!isRegionalApproved(current)) {
+    throw new HttpError(
+      409,
+      "La actividad todavía no ha sido revisada por la Dirección Regional."
+    );
+  }
+
+  const status = stringValue(
+    req.body.status
+  );
+
+  const observations = stringValue(
+    req.body.observations
+  );
+
+  const normalizedStatus =
+    normalize(status);
+
+  const approved =
+    normalizedStatus.includes("VALID") ||
+    normalizedStatus.includes("APROB");
+
+  if (
+    !approved &&
+    !observations
+  ) {
+    throw new HttpError(
+      400,
+      "Debe indicar una observación para devolver u observar el registro."
+    );
+  }
+
+  const now =
+    Date.now();
+
+  const updates = {
+    estado_flujo:
+      approved
+        ? "VALIDADO_NACIONAL"
+        : "NO_VALIDADO_NACIONAL",
+
+    estado_nacional:
+      approved
+        ? "Validado nacional"
+        : "No validado nacional",
+
+    observacion_nacional:
+      observations,
+
+    coordinador_nacional:
+      req.user.name ||
+      req.user.username,
+
+    fecha_revision_nacional:
+      now,
+
+    fecha_cierre:
+      now
+  };
+
+  const result = await arcgis.update(
+    env.layers.actividades,
+    objectId,
+    updates
+  );
+
+  if (approved && isVifaProgram(current.programa) && normalize(current.tipo_medicion_vifa) === "TRIMESTRAL") {
+    const quarter = normalize(current.trimestre_ejecucion_vifa);
+    const quarterNumber = Number(quarter.replace("T", ""));
+    if ([1, 2, 3, 4].includes(quarterNumber) && env.layers.vifa) {
+      const plans = await arcgis.query(env.layers.vifa, {
+        where: `id_planificacion = '${String(current.id_planificacion_vifa || "").replace(/'/g, "''")}'`,
+        returnGeometry: false
+      });
+      const planObjectId = Number(plans[0]?.attributes?.OBJECTID);
+      if (Number.isInteger(planObjectId)) {
+        await arcgis.update(env.layers.vifa, planObjectId, {
+          [`cumplimiento_t${quarterNumber}`]: 1,
+          fecha_actualizacion: now
+        });
+      }
+    }
+  }
+
+  await writeValidation(
+    req.user,
+    current.id_pumi || objectId,
+    "NACIONAL",
+    updates.estado_nacional,
+    observations
+  );
+
+  await writeLog(
+    req.user,
+    current.id_pumi || objectId,
+    "VALIDACION_NACIONAL",
+    `${updates.estado_nacional}: ${observations}`
+  );
+
+  res.json({
+    ok: true,
+    result,
+
+    workflow_status:
+      approved
+        ? "Validado nacional"
+        : "No validado nacional",
+
+    message:
+      approved
+        ? "Actividad validada nacionalmente."
+        : "Actividad no validada nacionalmente."
+  });
+}
+
+/* =========================================================
+   PANEL CONSOLIDADO
+========================================================= */
+
+export async function getDashboardOverview(req, res) {
+  const scope = buildActivityScope(
+    req.user
+  );
+
+  const delegationFilter = stringValue(
+    req.query.delegacion
+  );
+
+  const features = await arcgis.query(
+    env.layers.actividades,
+    {
+      where:
+        `(${scope}) AND (estado_registro IS NULL OR estado_registro <> 'ELIMINADO')`,
+      returnGeometry: true,
+      orderByFields: "OBJECTID DESC"
+    }
+  );
+
+  const rows = features.map(
+    (feature) =>
+      feature.attributes || {}
+  );
+
+  const progress = buildProgressRows(
+    rows
+  );
+
+  const meta = progress.reduce(
+    (total, row) =>
+      total + row.meta,
+    0
+  );
+
+  const advance = progress.reduce(
+    (total, row) =>
+      total + row.avance,
+    0
+  );
+
+  const pending = Math.max(
+    meta - advance,
+    0
+  );
+
+  const percentage =
+    meta > 0
+      ? (advance / meta) * 100
+      : 0;
+
+  const participants = rows.reduce(
+    (total, row) =>
+      total +
+      numberValue(
+        row.cantidad_participantes
+      ),
+    0
+  );
+
+  const statuses = {};
+
+  for (const row of rows) {
+    const status =
+      workflowStatus(row);
+
+    statuses[status] =
+      (statuses[status] || 0) + 1;
+  }
+
+  const delegations =
+    buildDelegationSummary(rows);
+
+  const programs =
+    buildProgramSummary(progress);
+
+  /*
+   * El desglose detallado solo se devuelve
+   * cuando se selecciona una delegación.
+   */
+  const activityBreakdown =
+    delegationFilter
+      ? buildProgressRows(
+          rows.filter(
+            (row) =>
+              normalize(row.delegacion) ===
+              normalize(delegationFilter)
+          )
+        )
+      : [];
+
+  res.json({
+    ok: true,
+
+    role:
+      req.user.role,
+
+    scope: {
+      region:
+        req.user.region || null,
+
+      delegation:
+        req.user.delegation || null,
+
+      program:
+        req.user.program || null
+    },
+
+    kpis: {
+      registros:
+        rows.length,
+
+      meta,
+
+      avance:
+        advance,
+
+      pendiente:
+        pending,
+
+      porcentaje_avance:
+        percentage,
+
+      participantes:
+        participants
+    },
+
+    statuses,
+
+    delegations,
+
+    programs,
+
+    activity_breakdown:
+      activityBreakdown,
+
+    map_features:
+      features
+  });
+}
+
+/* =========================================================
+   CATÁLOGOS
+========================================================= */
+
+export async function getCatalogs(_req, res) {
+  const features = await arcgis.query(
+    env.layers.catalogos,
+    {
+      where: "1=1",
+      returnGeometry: false,
+      orderByFields: "orden ASC"
+    }
+  );
+
+  res.json({
+    ok: true,
+    features
+  });
+}
+
+/* =========================================================
+   RESUMEN
+========================================================= */
+
+export async function getSummary(req, res) {
+  const scope = buildActivityScope(
+    req.user
+  );
+
+  const features = await arcgis.query(
+    env.layers.resumen,
+    {
+      where: scope,
+      returnGeometry: true
+    }
+  );
+
+  res.json({
+    ok: true,
+    features
+  });
+}
+
+/* =========================================================
+   DELEGACIONES
+========================================================= */
+
+export async function getDelegations(_req, res) {
+  const features = await arcgis.query(
+    env.layers.delegaciones,
+    {
+      where: "1=1",
+      returnGeometry: true,
+
+      orderByFields:
+        "direccion_regional ASC, delegacion ASC"
+    }
+  );
+
+  res.json({
+    ok: true,
+    features
+  });
+}
+
+/* =========================================================
+   USUARIOS
+========================================================= */
+
+export async function getUsers(req, res) {
+  if (!canManageUsers(req.user)) {
+    throw new HttpError(
+      403,
+      "No tiene permiso para administrar usuarios."
+    );
+  }
+
+  const features = await arcgis.query(
+    env.layers.usuarios,
+    {
+      where: "1=1",
+      returnGeometry: false,
+      orderByFields: "OBJECTID DESC"
+    }
+  );
+
+  const passwordField =
+    env.userFields.password;
+
+  const safeFeatures = features.map(
+    (feature) => ({
+      ...feature,
+
+      attributes:
+        Object.fromEntries(
+          Object.entries(
+            feature.attributes || {}
+          ).filter(
+            ([key]) =>
+              key !== passwordField
+          )
+        )
+    })
+  );
+
+  res.json({
+    ok: true,
+    features: safeFeatures
+  });
+}
+
+export async function createUser(req, res) {
+  if (!canManageUsers(req.user)) {
+    throw new HttpError(
+      403,
+      "No tiene permiso para administrar usuarios."
+    );
+  }
+
+  const attributes = {
+    ...(req.body.attributes || {}),
+
+    estado:
+      req.body.attributes?.estado ||
+      "Activo"
+  };
+
+  const result = await arcgis.add(
+    env.layers.usuarios,
+    attributes
+  );
+
+  res.status(201).json({
+    ok: true,
+    result
+  });
+}
+
+/* =========================================================
+   SCHEMA TEMPORAL
+========================================================= */
+
+export async function getSchema(_req, res) {
+  const layers = {};
+
+  for (
+    const [name, url]
+    of Object.entries(env.layers)
+  ) {
+    if (!url) {
+      continue;
+    }
+
+    const info =
+      await arcgis.layerInfo(url);
+
+    layers[name] = {
+      name: info.name,
+
+      fields:
+        (info.fields || []).map(
+          (field) => ({
+            name: field.name,
+            alias: field.alias,
+            type: field.type
+          })
+        )
+    };
+  }
+
+  res.json({
+    ok: true,
+    layers
+  });
+}
+
+/* =========================================================
+   CÁLCULO DE META Y DISPONIBLE
+========================================================= */
+
+async function calculateOptions(user) {
+  const scope =
+    buildActivityScope(user);
+
+  const features = await arcgis.query(
+    env.layers.actividades,
+    {
+      where:
+        `(${scope}) AND (estado_registro IS NULL OR estado_registro <> 'ELIMINADO')`,
+      returnGeometry: false
+    }
+  );
+
+  const rows = features.map(
+    (feature) =>
+      feature.attributes || {}
+  );
+
+  const regularOptions = buildOptionRows(rows)
+    .filter((item) => !isVifaProgram(item.programa));
+
+  const vifaOptions = await calculateVifaOptions(user, rows);
+
+  return [
+    ...regularOptions,
+    ...vifaOptions
+  ].sort((a, b) => {
+    const programComparison = String(a.programa || "")
+      .localeCompare(String(b.programa || ""), "es", { sensitivity: "base" });
+
+    if (programComparison !== 0) {
+      return programComparison;
+    }
+
+    return numberValue(a.numero_actividad) - numberValue(b.numero_actividad) ||
+      String(a.actividad || "").localeCompare(String(b.actividad || ""), "es", { sensitivity: "base" });
+  });
+}
+
+async function calculateVifaOptions(user, activityRows = null) {
+  if (!env.layers.vifa || !user?.delegation) {
+    return [];
+  }
+
+  const planningFeatures = await arcgis.query(
+    env.layers.vifa,
+    {
+      where: "(activo IS NULL OR activo = 'SI')",
+      returnGeometry: false,
+      orderByFields: "numero_actividad ASC"
+    }
+  );
+
+  const planningRows = planningFeatures
+    .map((feature) => feature.attributes || {})
+    .filter((row) => sameDelegation(row.delegacion, user.delegation));
+
+  let executionRows = activityRows;
+
+  if (!executionRows) {
+    const scope = buildActivityScope(user);
+    const executionFeatures = await arcgis.query(
+      env.layers.actividades,
+      {
+        where: `(${scope}) AND (estado_registro IS NULL OR estado_registro <> 'ELIMINADO')`,
+        returnGeometry: false
+      }
+    );
+
+    executionRows = executionFeatures.map(
+      (feature) => feature.attributes || {}
+    );
+  }
+
+  const vifaExecutionRows = (executionRows || []).filter(
+    (row) =>
+      isVifaProgram(row.programa) &&
+      sameDelegation(row.delegacion, user.delegation)
+  );
+
+  return planningRows.map((plan) => {
+    const code = stringValue(plan.codigo_actividad);
+    const activity = stringValue(plan.actividad);
+    const number = numberValue(plan.numero_actividad);
+    const type = normalize(plan.tipo_medicion);
+    const quarterly = type === "TRIMESTRAL" || number >= 16;
+
+    const matchingExecutions = vifaExecutionRows.filter((row) => {
+      const rowCode = stringValue(row.codigo_actividad_vifa || row.codigo_actividad);
+
+      if (code && rowCode) {
+        return normalize(code) === normalize(rowCode);
+      }
+
+      return normalize(row.actividad) === normalize(activity);
+    });
+
+    let validated = 0;
+    let inReview = 0;
+    const quarterReview = { T1: 0, T2: 0, T3: 0, T4: 0 };
+
+    for (const row of matchingExecutions) {
+      const quantity = Math.max(numberValue(row.avance_realizado), 0);
+
+      if (isHistorical(row)) {
+        validated += Math.max(numberValue(row.avance), 0);
+      } else if (isNationalApproved(row)) {
+        validated += quantity;
+      } else if (!isRejected(row)) {
+        inReview += quantity;
+        const quarter = normalize(row.trimestre_ejecucion_vifa);
+        if (quarterReview[quarter] !== undefined) {
+          quarterReview[quarter] += 1;
+        }
+      }
+    }
+
+    const baseline = quarterly ? 0 : Math.max(numberValue(plan.linea_base), 0);
+    const validatedCapped = quarterly ? validated : Math.min(validated, baseline);
+    const pending = quarterly ? 0 : Math.max(baseline - validatedCapped, 0);
+    const reviewCapped = quarterly ? inReview : Math.min(inReview, pending);
+    const available = quarterly ? 0 : Math.max(pending - reviewCapped, 0);
+    const percentage = baseline > 0
+      ? Math.min((validatedCapped / baseline) * 100, 100)
+      : 0;
+
+    return {
+      programa: "VIFA",
+      objectid_planificacion: numberValue(plan.OBJECTID),
+      id_planificacion: stringValue(plan.id_planificacion),
+      codigo_actividad: code,
+      numero_actividad: number,
+      actividad: activity,
+      descripcion: stringValue(plan.descripcion),
+      eje: stringValue(plan.eje),
+      plan_asociado: stringValue(plan.plan_asociado),
+      poblacion_objetivo: stringValue(plan.poblacion_objetivo),
+      direccion_regional: stringValue(plan.direccion_regional),
+      codigo_region: stringValue(plan.codigo_region),
+      delegacion: stringValue(plan.delegacion),
+      codigo_delegacion: stringValue(plan.codigo_delegacion),
+      mes_programado: stringValue(plan.mes_programado),
+      numero_mes: numberValue(plan.numero_mes),
+      trimestre_programado: stringValue(plan.trimestre_programado),
+      tipo_medicion: quarterly ? "TRIMESTRAL" : "LINEA_BASE",
+      linea_base: baseline,
+      meta: baseline,
+      unidad_medida: stringValue(plan.unidad_medida),
+      control_trimestral: quarterly ? "SI" : stringValue(plan.control_trimestral),
+      cumplimiento_t1: numberValue(plan.cumplimiento_t1),
+      cumplimiento_t2: numberValue(plan.cumplimiento_t2),
+      cumplimiento_t3: numberValue(plan.cumplimiento_t3),
+      cumplimiento_t4: numberValue(plan.cumplimiento_t4),
+      en_revision_t1: quarterReview.T1,
+      en_revision_t2: quarterReview.T2,
+      en_revision_t3: quarterReview.T3,
+      en_revision_t4: quarterReview.T4,
+      avance_validado: validatedCapped,
+      avance_en_revision: reviewCapped,
+      pendiente_real: pending,
+      disponible_registro: available,
+      porcentaje: percentage,
+      es_control_trimestral: quarterly,
+      permite_registro_acumulativo: !quarterly,
+      registro_habilitado: quarterly
+        ? true
+        : isVifaRegistrationOpen(plan),
+      periodo_cerrado: quarterly
+        ? false
+        : !isVifaRegistrationOpen(plan),
+      trimestres_habilitados: quarterly
+        ? ["T3", "T4"]
+        : []
+    };
+  });
+}
+
+function buildOptionRows(rows) {
+  const grouped = new Map();
+
+  for (const row of rows) {
+    const program = stringValue(row.programa);
+    const activity = stringValue(row.actividad);
+
+    if (!program || !activity) continue;
+    if (normalize(program) === "PROGRAMA" || normalize(activity) === "ACTIVIDAD") continue;
+
+    const key = activityKey(program, activity);
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        programa: program,
+        actividad: activity,
+        meta: 0,
+        avance_historico: 0,
+        avance_validado_nuevo: 0,
+        avance_en_revision: 0
+      });
+    }
+
+    const item = grouped.get(key);
+
+    if (isHistorical(row)) {
+      item.meta += Math.max(numberValue(row.meta), 0);
+      item.avance_historico += Math.max(numberValue(row.avance), 0);
+      continue;
+    }
+
+    const quantity = Math.max(numberValue(row.avance_realizado), 0);
+
+    if (isNationalApproved(row)) {
+      item.avance_validado_nuevo += quantity;
+    } else if (!isRejected(row)) {
+      item.avance_en_revision += quantity;
+    }
+  }
+
+  return [...grouped.values()]
+    .filter((item) => item.meta > 0)
+    .map((item) => {
+      const rawValidated =
+        item.avance_historico +
+        item.avance_validado_nuevo;
+
+      const avance_validado =
+        Math.min(rawValidated, item.meta);
+
+      const pendiente_real =
+        Math.max(item.meta - avance_validado, 0);
+
+      const avance_en_revision =
+        Math.min(item.avance_en_revision, pendiente_real);
+
+      const disponible_registro =
+        Math.max(pendiente_real - avance_en_revision, 0);
+
+      const porcentaje =
+        item.meta > 0
+          ? Math.min((avance_validado / item.meta) * 100, 100)
+          : 0;
+
+      return {
+        ...item,
+        avance_validado,
+        avance_en_revision,
+        pendiente_real,
+        disponible_registro,
+        porcentaje,
+        excedente_no_computable:
+          Math.max(rawValidated - item.meta, 0)
+      };
+    });
+}
+
+function buildProgressRows(rows) {
+  return buildOptionRows(rows).map(
+    (item) => ({
+      programa:
+        item.programa,
+
+      actividad:
+        item.actividad,
+
+      meta:
+        item.meta,
+
+      avance:
+        item.avance_validado,
+
+      pendiente:
+        item.pendiente_real,
+
+      porcentaje:
+        item.porcentaje
+    })
+  );
+}
+
+function buildProgramSummary(progressRows) {
+  const grouped = new Map();
+
+  for (const row of progressRows) {
+    const key =
+      normalize(row.programa);
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        programa:
+          row.programa,
+
+        meta:
+          0,
+
+        avance:
+          0
+      });
+    }
+
+    const item =
+      grouped.get(key);
+
+    item.meta +=
+      numberValue(row.meta);
+
+    item.avance +=
+      numberValue(row.avance);
+  }
+
+  return [
+    ...grouped.values()
+  ].map((item) => {
+    const pendiente = Math.max(
+      item.meta - item.avance,
+      0
+    );
+
+    const porcentaje =
+      item.meta > 0
+        ? (
+            item.avance /
+            item.meta
+          ) * 100
+        : 0;
+
+    return {
+      ...item,
+      pendiente,
+      porcentaje
+    };
+  });
+}
+
+function buildDelegationSummary(rows) {
+  const grouped = new Map();
+
+  for (const row of rows) {
+    const delegation =
+      stringValue(row.delegacion);
+
+    if (!delegation) {
+      continue;
+    }
+
+    const key =
+      delegationKey(delegation);
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        delegacion:
+          delegation,
+
+        direccion_regional:
+          stringValue(
+            row.direccion_regional
+          ),
+
+        registros:
+          0,
+
+        pendientes_regional:
+          0,
+
+        pendientes_nacional:
+          0,
+
+        validados:
+          0
+      });
+    }
+
+    const item =
+      grouped.get(key);
+
+    item.registros += 1;
+
+    const status =
+      workflowStatus(row);
+
+    if (
+      status ===
+      "Pendiente regional"
+    ) {
+      item.pendientes_regional += 1;
+    }
+
+    if (
+      status ===
+      "Pendiente nacional"
+    ) {
+      item.pendientes_nacional += 1;
+    }
+
+    if (
+      status ===
+      "Validado nacional"
+    ) {
+      item.validados += 1;
+    }
+  }
+
+  return [
+    ...grouped.values()
+  ].sort(
+    (a, b) =>
+      a.delegacion.localeCompare(
+        b.delegacion,
+        "es"
+      )
+  );
+}
+
+/* =========================================================
+   FILTROS DE BANDEJA
+========================================================= */
+
+function buildReviewFilters(features) {
+  const rows = features.map(
+    (feature) =>
+      feature.attributes || {}
+  );
+
+  return {
+    regiones: [
+      ...new Set(
+        rows
+          .map(
+            (row) =>
+              stringValue(
+                row.direccion_regional
+              )
+          )
+          .filter(Boolean)
+      )
+    ].sort(),
+
+    delegaciones: [
+      ...new Set(
+        rows
+          .map(
+            (row) =>
+              stringValue(
+                row.delegacion
+              )
+          )
+          .filter(Boolean)
+      )
+    ].sort(),
+
+    programas: [
+      ...new Set(
+        rows
+          .map(
+            (row) =>
+              stringValue(
+                row.programa
+              )
+          )
+          .filter(Boolean)
+      )
+    ].sort(),
+
+    actividades: [
+      ...new Set(
+        rows
+          .map(
+            (row) =>
+              stringValue(
+                row.actividad
+              )
+          )
+          .filter(Boolean)
+      )
+    ].sort(),
+
+    estados: [
+      ...new Set(
+        rows.map(
+          (row) =>
+            workflowStatus(row)
+        )
+      )
+    ].sort()
+  };
+}
+
+/* =========================================================
+   PROGRESO DE UNA ACTIVIDAD
+========================================================= */
+
+async function getActivityProgress(
+  user,
+  program,
+  activity,
+  delegation
+) {
+  const scope =
+    buildActivityScope(user);
+
+  const features = await arcgis.query(
+    env.layers.actividades,
+    {
+      where: scope,
+      returnGeometry: false
+    }
+  );
+
+  const rows = features
+    .map(
+      (feature) =>
+        feature.attributes || {}
+    )
+    .filter(
+      (row) =>
+        normalize(row.programa) ===
+          normalize(program) &&
+        normalize(row.actividad) ===
+          normalize(activity) &&
+        (
+          !delegation ||
+          normalize(row.delegacion) ===
+            normalize(delegation)
+        )
+    );
+
+  const options =
+    buildOptionRows(rows);
+
+  return options[0] || {
+    programa:
+      program || "",
+
+    actividad:
+      activity || "",
+
+    meta:
+      0,
+
+    avance_historico:
+      0,
+
+    avance_validado_nuevo:
+      0,
+
+    avance_en_revision:
+      0,
+
+    avance_validado:
+      0,
+
+    pendiente_real:
+      0,
+
+    disponible_registro:
+      0,
+
+    porcentaje:
+      0
+  };
+}
+
+/* =========================================================
+   OBTENER ACTIVIDAD SEGÚN ÁMBITO
+========================================================= */
+
+async function getScopedActivity(
+  user,
+  objectId
+) {
+  const scope =
+    buildActivityScope(user);
+
+  const features = await arcgis.query(
+    env.layers.actividades,
+    {
+      where:
+        `(${scope}) AND (OBJECTID=${objectId})`,
+
+      returnGeometry: true
+    }
+  );
+
+  const feature =
+    features[0];
+
+  if (!feature) {
+    throw new HttpError(
+      404,
+      "La actividad no existe o no corresponde al ámbito del usuario."
+    );
+  }
+
+  return feature;
+}
+
+/* =========================================================
+   VALIDACIONES
+========================================================= */
+
+async function writeValidation(
+  user,
+  idPumi,
+  level,
+  status,
+  observation
+) {
+  if (!env.layers.validaciones) {
+    return;
+  }
+
+  try {
+    await arcgis.add(
+      env.layers.validaciones,
+      {
+        id_pumi:
+          numberValue(idPumi),
+
+        nivel:
+          stringValue(level),
+
+        estado:
+          stringValue(status),
+
+        observacion:
+          stringValue(observation),
+
+        usuario:
+          stringValue(
+            user.username
+          ),
+
+        fecha:
+          Date.now()
+      }
+    );
+  } catch (error) {
+    console.error(
+      "ERROR PUMI_VALIDACIONES:",
+      error.message
+    );
+  }
+}
+
+/* =========================================================
+   BITÁCORA
+========================================================= */
+
+async function writeLog(
+  user,
+  idPumi,
+  action,
+  detail
+) {
+  if (!env.layers.bitacora) {
+    return;
+  }
+
+  try {
+    await arcgis.add(
+      env.layers.bitacora,
+      {
+        id_pumi_big:
+          numberValue(idPumi),
+
+        accion:
+          stringValue(action),
+
+        detalle:
+          stringValue(detail),
+
+        usuario:
+          stringValue(
+            user.username
+          ),
+
+        fecha:
+          Date.now()
+      }
+    );
+  } catch (error) {
+    console.error(
+      "ERROR PUMI_BITACORA:",
+      error.message
+    );
+  }
+}
