@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260723-4";
+import { ApiService } from "../services/api-service.js?v=20260724-1";
 
 const api = new ApiService();
 
@@ -546,8 +546,9 @@ function getRows() {
 }
 
 function isSelectableActivityOption(item = {}) {
+  const isVifa = normalize(item.programa) === "VIFA";
   const isVifaQuarterly =
-    normalize(item.programa) === "VIFA" &&
+    isVifa &&
     (
       item.es_control_trimestral === true ||
       normalize(item.control_trimestral) === "SI" ||
@@ -560,6 +561,22 @@ function isSelectableActivityOption(item = {}) {
     numberValue(item.meta) > 0 ||
     isVifaQuarterly
   );
+}
+
+function isRegistrableActivityOption(item = {}) {
+  if (!isSelectableActivityOption(item)) {
+    return false;
+  }
+
+  if (normalize(item.programa) !== "VIFA") {
+    return true;
+  }
+
+  if (item.es_control_trimestral === true) {
+    return true;
+  }
+
+  return item.registro_habilitado !== false;
 }
 
 function hasPositiveMetaForActivity(program, activity) {
@@ -2780,6 +2797,26 @@ function buildProgressRows(rows = getRows()) {
     }
   }
 
+  for (const option of state.activityOptions || []) {
+    if (
+      normalize(option.programa) !== "VIFA" ||
+      option.es_control_trimestral === true ||
+      numberValue(option.meta) <= 0
+    ) {
+      continue;
+    }
+
+    const key =
+      `${normalize(option.programa)}|||${normalize(option.actividad)}`;
+
+    grouped.set(key, {
+      program: option.programa,
+      activity: option.actividad,
+      meta: numberValue(option.meta),
+      advance: numberValue(option.avance_validado)
+    });
+  }
+
   return [...grouped.values()]
     .filter(
       (item) =>
@@ -3470,8 +3507,6 @@ function renderActivityForm(editingRow = null) {
             Trimestre de ejecución
             <select id="activity-vifa-quarter">
               <option value="">Seleccione un trimestre</option>
-              <option value="T1">T1</option>
-              <option value="T2">T2</option>
               <option value="T3">T3</option>
               <option value="T4">T4</option>
             </select>
@@ -3815,7 +3850,7 @@ function setupActivityForm(editingRow) {
 
   const validOptions =
     state.activityOptions.filter(
-      isSelectableActivityOption
+      isRegistrableActivityOption
     );
 
   const programs = [
@@ -3930,6 +3965,12 @@ function setupActivityForm(editingRow) {
         <div><span>Eje</span><strong>${escapeHtml(option.eje || "")}</strong></div>
         <div><span>Población objetivo</span><strong>${escapeHtml(option.poblacion_objetivo || "")}</strong></div>
         <div><span>Unidad de medida</span><strong>${escapeHtml(option.unidad_medida || "")}</strong></div>
+        ${option.periodo_cerrado ? `
+          <div class="vifa-period-closed">
+            <span>Estado del periodo</span>
+            <strong>Solo consulta</strong>
+          </div>
+        ` : ""}
       `;
     } else {
       planning?.classList.add("hidden");
