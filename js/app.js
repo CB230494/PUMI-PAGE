@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260724-1";
+import { ApiService } from "../services/api-service.js?v=20260724-2";
 
 const api = new ApiService();
 
@@ -150,7 +150,9 @@ const state = {
     activity: "",
     compliance: ""
   },
-  selectedInstitutions: []
+  selectedInstitutions: [],
+  vifaHistorico: [],
+  centrosEducativos: []
 };
 
 const $ = (id) => document.getElementById(id);
@@ -436,6 +438,23 @@ function renderComing(title) {
    CARGA DE DATOS
 ========================================================= */
 
+async function loadStaticJson(path, fallback = {}) {
+  try {
+    const response = await fetch(
+      `${path}?v=20260724-2`,
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      return fallback;
+    }
+
+    return await response.json();
+  } catch {
+    return fallback;
+  }
+}
+
 async function loadData() {
   try {
     const role = normalize(state.user?.role);
@@ -446,14 +465,18 @@ async function loadData() {
       catalogs,
       delegations,
       activityOptions,
-      dashboard
+      dashboard,
+      vifaHistorico,
+      centrosEducativos
     ] = await Promise.all([
       api.getActivities(),
       api.getSummary(),
       api.getCatalogs(),
       api.getDelegations(),
       api.getActivityOptions(),
-      api.getDashboard()
+      api.getDashboard(),
+      loadStaticJson("./data/vifa-historico.json", { registros: [] }),
+      loadStaticJson("./data/centros-educativos.json", { centros: [] })
     ]);
 
     state.activityOptions =
@@ -468,6 +491,8 @@ async function loadData() {
     state.resumen = summary.features || [];
     state.catalogos = catalogs.features || [];
     state.delegaciones = delegations.features || [];
+    state.vifaHistorico = vifaHistorico.registros || [];
+    state.centrosEducativos = centrosEducativos.centros || [];
 
     state.dashboard =
       buildVisibleDashboard(
@@ -976,24 +1001,50 @@ function getInstitutionOptions() {
   );
 }
 
-function getEducationalCenterOptions() {
+function getEducationalCenterOptions(
+  provincia = "",
+  canton = "",
+  distrito = ""
+) {
+  const provinceKey = normalize(provincia);
+  const cantonKey = normalize(canton);
+  const districtKey = normalize(distrito);
+
   return [
     ...new Set(
-      getCatalogRows()
+      (state.centrosEducativos || [])
+        .filter((row) => {
+          if (
+            provinceKey &&
+            normalize(row.provincia) !== provinceKey
+          ) {
+            return false;
+          }
+
+          if (
+            cantonKey &&
+            normalize(row.canton) !== cantonKey
+          ) {
+            return false;
+          }
+
+          if (
+            districtKey &&
+            normalize(row.distrito) !== districtKey
+          ) {
+            return false;
+          }
+
+          return Boolean(row.nombre);
+        })
         .map((row) =>
-          getCatalogFieldValue(
-            row,
-            "centro_educativo",
-            "Centro educativo",
-            "centros_educativos",
-            "Centros educativos",
-            "nombre_centro_educativo",
-            "Nombre centro educativo"
-          )
+          String(row.nombre || "").trim()
         )
         .filter(Boolean)
     )
-  ].sort((a, b) => a.localeCompare(b, "es"));
+  ].sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
 }
 
 function isVifaOption(option) {
@@ -2752,6 +2803,34 @@ function renderKpiCards(values) {
     .join("");
 }
 
+function getLocalVifaHistoricalAdvance(option = {}) {
+  if (normalize(option.programa) !== "VIFA") {
+    return 0;
+  }
+
+  const delegation =
+    state.user?.delegation || "";
+
+  const code =
+    normalize(option.codigo_actividad);
+
+  return (state.vifaHistorico || [])
+    .filter(
+      (row) =>
+        sameDelegation(
+          row.delegacion,
+          delegation
+        ) &&
+        normalize(row.codigo_actividad) === code &&
+        row.control_trimestral !== true
+    )
+    .reduce(
+      (total, row) =>
+        total + numberValue(row.avance),
+      0
+    );
+}
+
 function buildProgressRows(rows = getRows()) {
   const grouped = new Map();
 
@@ -2813,7 +2892,9 @@ function buildProgressRows(rows = getRows()) {
       program: option.programa,
       activity: option.actividad,
       meta: numberValue(option.meta),
-      advance: numberValue(option.avance_validado)
+      advance:
+        numberValue(option.avance_validado) +
+        getLocalVifaHistoricalAdvance(option)
     });
   }
 
@@ -4197,6 +4278,38 @@ function setupLocationSelectors() {
 
       districtSelect.disabled =
         districts.length === 0;
+
+      fillSelect(
+        $("activity-school"),
+        [],
+        false,
+        "Seleccione primero un distrito"
+      );
+
+      $("activity-school").disabled = true;
+    }
+  );
+
+  districtSelect.addEventListener(
+    "change",
+    () => {
+      const centers = getEducationalCenterOptions(
+        provinceSelect.value,
+        cantonSelect.value,
+        districtSelect.value
+      );
+
+      fillSelect(
+        $("activity-school"),
+        centers,
+        false,
+        centers.length
+          ? "Seleccione un centro educativo"
+          : "No hay centros registrados"
+      );
+
+      $("activity-school").disabled =
+        centers.length === 0;
     }
   );
 }
@@ -4207,10 +4320,12 @@ function setupPlaceTypeSelector() {
 
   fillSelect(
     $("activity-school"),
-    getEducationalCenterOptions(),
+    [],
     false,
-    "Seleccione un centro educativo"
+    "Seleccione primero un distrito"
   );
+
+  $("activity-school").disabled = true;
 
   fillSelect(
     select,
