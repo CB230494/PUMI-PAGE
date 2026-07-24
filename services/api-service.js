@@ -144,6 +144,12 @@ export class ApiService {
     );
   }
 
+  getVifaOptions() {
+    return this.request(
+      "/api/vifa/opciones"
+    );
+  }
+
   createActivity(
     attributes,
     geometry = null
