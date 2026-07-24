@@ -2760,7 +2760,8 @@ function renderKpisFromDashboard(kpis) {
 
 function renderKpisFromLocal() {
   const rows = getRows();
-  const progress = buildProgressRows();
+  const progress = buildProgressRows()
+    .filter((row) => normalize(row.program) !== "VIFA");
 
   const meta = sumBy(progress, "meta");
   const advance = sumBy(progress, "advance");
@@ -2780,14 +2781,27 @@ function renderKpisFromLocal() {
     0
   );
 
-  renderKpiCards([
+  const quarter = getCurrentVifaQuarter();
+  const vifaSummary = buildVifaQuarterSummary()
+    .find((item) => item.trimestre === quarter);
+
+  const cards = [
     ["Registros", rows.length],
-    ["Meta", meta],
-    ["Avance", advance],
-    ["Pendiente", pending],
-    ["% avance", `${percentage.toFixed(1)}%`],
+    ["Meta anual (otros programas)", meta],
+    ["Avance anual (otros programas)", advance],
+    ["Pendiente anual (otros programas)", pending],
+    ["% anual (otros programas)", `${percentage.toFixed(1)}%`],
     ["Participantes", participants]
-  ]);
+  ];
+
+  if (vifaSummary) {
+    cards.push([
+      `VIFA ${quarter}`,
+      `${numberValue(vifaSummary.porcentaje).toFixed(1)}%`
+    ]);
+  }
+
+  renderKpiCards(cards);
 }
 
 function renderKpiCards(values) {
@@ -2932,10 +2946,380 @@ function buildProgressRows(rows = getRows()) {
     });
 }
 
+function getCurrentVifaQuarter(date = new Date()) {
+  const month = date.getMonth() + 1;
+
+  if (month <= 3) return "T1";
+  if (month <= 6) return "T2";
+  if (month <= 9) return "T3";
+  return "T4";
+}
+
+function getVifaQuarterOrder(quarter = "") {
+  return ({ T1: 1, T2: 2, T3: 3, T4: 4 })[
+    normalize(quarter)
+  ] || 99;
+}
+
+function getVifaOptionQuarter(option = {}) {
+  const quarter = normalize(
+    option.trimestre_programado ||
+    option.trimestre_programado_vifa
+  );
+
+  return ["T1", "T2", "T3", "T4"].includes(quarter)
+    ? quarter
+    : "";
+}
+
+function isVifaQuarterlyOption(option = {}) {
+  return (
+    option.es_control_trimestral === true ||
+    normalize(option.control_trimestral) === "SI" ||
+    [16, 17, 18].includes(numberValue(option.numero_actividad))
+  );
+}
+
+function isVifaRecordInCurrentScope(row = {}) {
+  if (isDelegationRole()) {
+    return sameDelegation(
+      row.delegacion,
+      state.user?.delegation
+    );
+  }
+
+  if (isRegionalRole() && !isNationalViewerRole()) {
+    return !state.user?.region || sameRegion(
+      row.direccion_regional,
+      state.user.region
+    );
+  }
+
+  if (isNationalViewerRole()) {
+    const filters = state.nationalViewerFilters || {};
+
+    if (
+      filters.region &&
+      !sameRegion(row.direccion_regional, filters.region)
+    ) {
+      return false;
+    }
+
+    if (
+      filters.delegation &&
+      !sameDelegation(row.delegacion, filters.delegation)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function getVifaPlanningOptions() {
+  return (state.activityOptions || []).filter(
+    (option) =>
+      normalize(option.programa) === "VIFA" &&
+      isVifaRecordInCurrentScope(option)
+  );
+}
+
+function getVifaHistoricalRows() {
+  return (state.vifaHistorico || []).filter(
+    (row) => isVifaRecordInCurrentScope(row)
+  );
+}
+
+function getVifaValidatedRows() {
+  return getRows().filter(
+    (row) =>
+      normalize(row.programa) === "VIFA" &&
+      !isHistorical(row) &&
+      isNationalApproved(row) &&
+      isVifaRecordInCurrentScope(row)
+  );
+}
+
+function getVifaObligationKey(delegation, code, quarter) {
+  return [
+    getDelegationCanonicalKey(delegation),
+    normalize(code),
+    normalize(quarter)
+  ].join("|||");
+}
+
+function buildVifaQuarterDetails() {
+  const obligations = new Map();
+  const options = getVifaPlanningOptions();
+
+  for (const option of options) {
+    const delegation =
+      option.delegacion || state.user?.delegation || "";
+    const code =
+      option.codigo_actividad || option.codigo_actividad_vifa || "";
+    const number = numberValue(option.numero_actividad);
+    const quarterly = isVifaQuarterlyOption(option);
+    const quarters = quarterly
+      ? ["T1", "T2", "T3", "T4"]
+      : [getVifaOptionQuarter(option)].filter(Boolean);
+
+    for (const quarter of quarters) {
+      const key = getVifaObligationKey(
+        delegation,
+        code,
+        quarter
+      );
+
+      obligations.set(key, {
+        key,
+        delegacion: delegation,
+        direccion_regional: option.direccion_regional || "",
+        codigo: code,
+        numero_actividad: number,
+        actividad: option.actividad || code,
+        trimestre: quarter,
+        control_trimestral: quarterly,
+        linea_base: quarterly ? 1 : numberValue(option.linea_base || option.meta),
+        avance: 0,
+        porcentaje: 0,
+        estado: "Pendiente"
+      });
+    }
+  }
+
+  for (const row of getVifaHistoricalRows()) {
+    const quarter = normalize(row.trimestre);
+    const code = row.codigo_actividad || "";
+
+    if (!["T1", "T2", "T3", "T4"].includes(quarter)) {
+      continue;
+    }
+
+    const key = getVifaObligationKey(
+      row.delegacion,
+      code,
+      quarter
+    );
+
+    if (!obligations.has(key)) {
+      obligations.set(key, {
+        key,
+        delegacion: row.delegacion || "",
+        direccion_regional: row.direccion_regional || "",
+        codigo: code,
+        numero_actividad: numberValue(row.numero_actividad),
+        actividad: code,
+        trimestre: quarter,
+        control_trimestral: row.control_trimestral === true,
+        linea_base: row.control_trimestral === true
+          ? 1
+          : numberValue(row.linea_base),
+        avance: 0,
+        porcentaje: 0,
+        estado: "Pendiente"
+      });
+    }
+
+    const item = obligations.get(key);
+    item.avance += numberValue(row.avance);
+  }
+
+  for (const row of getVifaValidatedRows()) {
+    const quarter = normalize(
+      row.trimestre_ejecucion_vifa ||
+      row.trimestre_programado_vifa
+    );
+    const code =
+      row.codigo_actividad_vifa || "";
+
+    if (!["T1", "T2", "T3", "T4"].includes(quarter)) {
+      continue;
+    }
+
+    const key = getVifaObligationKey(
+      row.delegacion,
+      code,
+      quarter
+    );
+
+    if (!obligations.has(key)) {
+      obligations.set(key, {
+        key,
+        delegacion: row.delegacion || "",
+        direccion_regional: row.direccion_regional || "",
+        codigo: code,
+        numero_actividad: Number(
+          normalize(code).replace(/[^0-9]/g, "")
+        ) || 0,
+        actividad: row.actividad || code,
+        trimestre: quarter,
+        control_trimestral:
+          normalize(row.tipo_medicion_vifa) === "TRIMESTRAL",
+        linea_base:
+          normalize(row.tipo_medicion_vifa) === "TRIMESTRAL"
+            ? 1
+            : numberValue(row.linea_base_vifa),
+        avance: 0,
+        porcentaje: 0,
+        estado: "Pendiente"
+      });
+    }
+
+    const item = obligations.get(key);
+    item.avance += item.control_trimestral
+      ? 1
+      : numberValue(row.avance_realizado);
+  }
+
+  return [...obligations.values()]
+    .map((item) => {
+      const percentage = item.control_trimestral
+        ? (item.avance > 0 ? 100 : 0)
+        : (
+            item.linea_base > 0
+              ? Math.min(
+                  (item.avance / item.linea_base) * 100,
+                  100
+                )
+              : 0
+          );
+
+      const status = percentage >= 100
+        ? "Cumplida"
+        : percentage > 0
+          ? "En proceso"
+          : "Pendiente";
+
+      return {
+        ...item,
+        avance_computable: item.control_trimestral
+          ? (item.avance > 0 ? 1 : 0)
+          : Math.min(item.avance, item.linea_base),
+        porcentaje: percentage,
+        estado: status
+      };
+    })
+    .sort((a, b) => {
+      const quarter =
+        getVifaQuarterOrder(a.trimestre) -
+        getVifaQuarterOrder(b.trimestre);
+
+      if (quarter !== 0) return quarter;
+
+      const delegation = String(a.delegacion || "")
+        .localeCompare(String(b.delegacion || ""), "es");
+
+      if (delegation !== 0) return delegation;
+
+      return numberValue(a.numero_actividad) -
+        numberValue(b.numero_actividad);
+    });
+}
+
+function buildVifaQuarterSummary() {
+  const details = buildVifaQuarterDetails();
+
+  return ["T1", "T2", "T3", "T4"].map(
+    (quarter) => {
+      const rows = details.filter(
+        (row) => row.trimestre === quarter
+      );
+      const programmed = rows.length;
+      const fulfilled = rows.filter(
+        (row) => row.porcentaje >= 100
+      ).length;
+      const inProgress = rows.filter(
+        (row) => row.porcentaje > 0 && row.porcentaje < 100
+      ).length;
+      const pending = rows.filter(
+        (row) => row.porcentaje <= 0
+      ).length;
+      const percentage = programmed > 0
+        ? rows.reduce(
+            (total, row) => total + row.porcentaje,
+            0
+          ) / programmed
+        : 0;
+
+      return {
+        trimestre: quarter,
+        programadas: programmed,
+        cumplidas: fulfilled,
+        en_proceso: inProgress,
+        pendientes: pending,
+        porcentaje: percentage,
+        estado_periodo:
+          getVifaQuarterOrder(quarter) < getVifaQuarterOrder(getCurrentVifaQuarter())
+            ? "Cerrado"
+            : getVifaQuarterOrder(quarter) === getVifaQuarterOrder(getCurrentVifaQuarter())
+              ? "En curso"
+              : "No iniciado"
+      };
+    }
+  );
+}
+
+function renderVifaProgramSummaryCard() {
+  const summaries = buildVifaQuarterSummary();
+  const currentQuarter = getCurrentVifaQuarter();
+  const current = summaries.find(
+    (item) => item.trimestre === currentQuarter
+  );
+
+  if (!summaries.some((item) => item.programadas > 0)) {
+    return "";
+  }
+
+  return `
+    <div class="program-progress-row vifa-quarter-program-row">
+      <div class="program-progress-name" title="VIFA">
+        VIFA
+      </div>
+
+      <div class="program-progress-center">
+        <div class="program-progress-track">
+          <div
+            class="program-progress-fill"
+            style="width:${Math.min(numberValue(current?.porcentaje), 100)}%"
+          ></div>
+        </div>
+
+        <div class="program-progress-detail">
+          ${escapeHtml(currentQuarter)}:
+          <strong>${numberValue(current?.cumplidas)}</strong>
+          de
+          <strong>${numberValue(current?.programadas)}</strong>
+          actividades cumplidas
+          · En proceso:
+          <strong>${numberValue(current?.en_proceso)}</strong>
+        </div>
+
+        <div class="vifa-quarter-mini-grid" style="display:grid;grid-template-columns:repeat(4,minmax(75px,1fr));gap:6px;margin-top:8px;">
+          ${summaries.map((item) => `
+            <div style="padding:7px 8px;border:1px solid #d9e2f1;border-radius:9px;background:#f7f9fd;font-size:.78rem;">
+              <strong>${item.trimestre}</strong>
+              <span style="display:block;">${numberValue(item.porcentaje).toFixed(1)}%</span>
+              <small>${escapeHtml(item.estado_periodo)}</small>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="program-progress-percentage">
+        ${numberValue(current?.porcentaje).toFixed(1)}%
+      </div>
+    </div>
+  `;
+}
+
 function renderProgramSummaryFromLocal() {
   const grouped = {};
 
   for (const row of buildProgressRows()) {
+    if (normalize(row.program) === "VIFA") {
+      continue;
+    }
+
     if (!grouped[row.program]) {
       grouped[row.program] = {
         meta: 0,
@@ -2979,50 +3363,55 @@ function renderProgramSummaryFromDashboard(programs) {
   const visiblePrograms =
     (programs || []).filter(
       (item) =>
+        normalize(item.programa) !== "VIFA" &&
         numberValue(item.meta) > 0
     );
 
+  const regularHtml = visiblePrograms
+    .map(
+      (item) => `
+        <div class="program-progress-row">
+          <div
+            class="program-progress-name"
+            title="${escapeHtml(item.programa)}"
+          >
+            ${escapeHtml(item.programa)}
+          </div>
+
+          <div class="program-progress-center">
+            <div class="program-progress-track">
+              <div
+                class="program-progress-fill"
+                style="width:${Math.min(
+                  numberValue(item.porcentaje),
+                  100
+                )}%"
+              ></div>
+            </div>
+
+            <div class="program-progress-detail">
+              Meta anual:
+              <strong>${formatNumber(item.meta)}</strong>
+              · Avance:
+              <strong>${formatNumber(item.avance)}</strong>
+              · Pendiente:
+              <strong>${formatNumber(item.pendiente)}</strong>
+            </div>
+          </div>
+
+          <div class="program-progress-percentage">
+            ${numberValue(item.porcentaje).toFixed(1)}%
+          </div>
+        </div>
+      `
+    )
+    .join("");
+
+  const vifaHtml = renderVifaProgramSummaryCard();
+
   $("program-summary").innerHTML =
-    visiblePrograms.length
-      ? visiblePrograms
-          .map(
-            (item) => `
-              <div class="program-progress-row">
-                <div
-                  class="program-progress-name"
-                  title="${escapeHtml(item.programa)}"
-                >
-                  ${escapeHtml(item.programa)}
-                </div>
-
-                <div class="program-progress-center">
-                  <div class="program-progress-track">
-                    <div
-                      class="program-progress-fill"
-                      style="width:${Math.min(
-                        numberValue(item.porcentaje),
-                        100
-                      )}%"
-                    ></div>
-                  </div>
-
-                  <div class="program-progress-detail">
-                    Meta:
-                    <strong>${formatNumber(item.meta)}</strong>
-                    · Avance:
-                    <strong>${formatNumber(item.avance)}</strong>
-                    · Pendiente:
-                    <strong>${formatNumber(item.pendiente)}</strong>
-                  </div>
-                </div>
-
-                <div class="program-progress-percentage">
-                  ${numberValue(item.porcentaje).toFixed(1)}%
-                </div>
-              </div>
-            `
-          )
-          .join("")
+    regularHtml || vifaHtml
+      ? `${regularHtml}${vifaHtml}`
       : `
           <p class="page-scope">
             No hay datos disponibles.
@@ -3032,6 +3421,7 @@ function renderProgramSummaryFromDashboard(programs) {
 
 function renderActivityBreakdownFromLocal() {
   const rows = buildProgressRows()
+    .filter((row) => normalize(row.program) !== "VIFA")
     .sort((a, b) => {
       const programComparison =
         a.program.localeCompare(
@@ -3060,6 +3450,89 @@ function renderActivityBreakdownFromLocal() {
   renderActivityBreakdownTable(rows);
 }
 
+function renderVifaQuarterBreakdown() {
+  const summaries = buildVifaQuarterSummary();
+  const details = buildVifaQuarterDetails();
+
+  if (!summaries.some((item) => item.programadas > 0)) {
+    return "";
+  }
+
+  return `
+    <section style="margin-bottom:24px;">
+      <div class="panel-header" style="margin-bottom:12px;">
+        <div>
+          <span class="panel-kicker">VIFA</span>
+          <h3>Cumplimiento por trimestre</h3>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Trimestre</th>
+              <th>Estado del periodo</th>
+              <th>Programadas</th>
+              <th>Cumplidas</th>
+              <th>En proceso</th>
+              <th>Pendientes</th>
+              <th>% cumplimiento</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${summaries.map((item) => `
+              <tr>
+                <td><strong>${item.trimestre}</strong></td>
+                <td>${escapeHtml(item.estado_periodo)}</td>
+                <td>${formatNumber(item.programadas)}</td>
+                <td>${formatNumber(item.cumplidas)}</td>
+                <td>${formatNumber(item.en_proceso)}</td>
+                <td>${formatNumber(item.pendientes)}</td>
+                <td><strong>${numberValue(item.porcentaje).toFixed(1)}%</strong></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel-header" style="margin:22px 0 12px;">
+        <div>
+          <span class="panel-kicker">Detalle VIFA</span>
+          <h3>Actividades programadas por trimestre</h3>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Trimestre</th>
+              <th>Actividad</th>
+              <th>Línea base / control</th>
+              <th>Avance</th>
+              <th>% cumplimiento</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${details.map((row) => `
+              <tr>
+                <td><strong>${row.trimestre}</strong></td>
+                <td>${escapeHtml(row.actividad || row.codigo)}</td>
+                <td>${row.control_trimestral ? "Control trimestral" : formatNumber(row.linea_base)}</td>
+                <td>${row.control_trimestral ? (row.avance > 0 ? "Cumplido" : "Sin registro") : formatNumber(row.avance_computable)}</td>
+                <td><strong>${numberValue(row.porcentaje).toFixed(1)}%</strong></td>
+                <td>${escapeHtml(row.estado)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function renderActivityBreakdownTable(rows) {
   const container = $("activity-summary");
 
@@ -3070,18 +3543,25 @@ function renderActivityBreakdownTable(rows) {
   const visibleRows =
     (rows || []).filter(
       (row) =>
+        normalize(row.programa) !== "VIFA" &&
         numberValue(row.meta) > 0
     );
 
-  container.innerHTML = visibleRows.length
+  const regularHtml = visibleRows.length
     ? `
+        <div class="panel-header" style="margin-bottom:12px;">
+          <div>
+            <span class="panel-kicker">Programas anuales</span>
+            <h3>Metas y avances acumulados</h3>
+          </div>
+        </div>
         <div class="table-scroll">
           <table class="data-table">
             <thead>
               <tr>
                 <th>Programa</th>
                 <th>Actividad</th>
-                <th>Meta</th>
+                <th>Meta anual</th>
                 <th>Avance</th>
                 <th>Pendiente</th>
                 <th>% avance</th>
@@ -3120,6 +3600,12 @@ function renderActivityBreakdownTable(rows) {
           </table>
         </div>
       `
+    : "";
+
+  const vifaHtml = renderVifaQuarterBreakdown();
+
+  container.innerHTML = regularHtml || vifaHtml
+    ? `${vifaHtml}${regularHtml}`
     : `
         <div class="module-empty">
           No hay actividades disponibles.
