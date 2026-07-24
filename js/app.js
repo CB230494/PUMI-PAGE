@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260723-3";
+import { ApiService } from "../services/api-service.js?v=20260723-4";
 
 const api = new ApiService();
 
@@ -957,6 +957,30 @@ function getInstitutionOptions() {
   ].sort((a, b) =>
     a.localeCompare(b, "es")
   );
+}
+
+function getEducationalCenterOptions() {
+  return [
+    ...new Set(
+      getCatalogRows()
+        .map((row) =>
+          getCatalogFieldValue(
+            row,
+            "centro_educativo",
+            "Centro educativo",
+            "centros_educativos",
+            "Centros educativos",
+            "nombre_centro_educativo",
+            "Nombre centro educativo"
+          )
+        )
+        .filter(Boolean)
+    )
+  ].sort((a, b) => a.localeCompare(b, "es"));
+}
+
+function isVifaOption(option) {
+  return normalize(option?.programa) === "VIFA";
 }
 
 function isHistorical(row) {
@@ -3387,6 +3411,8 @@ function renderActivityForm(editingRow = null) {
           class="progress-info-card"
         ></div>
 
+        <section id="vifa-planning-details" class="vifa-planning-details hidden"></section>
+
         <div class="form-grid">
           <label>
             Fecha de actividad
@@ -3423,6 +3449,32 @@ function renderActivityForm(editingRow = null) {
               type="text"
               required
             >
+          </label>
+
+          <label id="vifa-form-name-wrap" class="hidden">
+            Formulario
+            <input id="activity-vifa-form-name" type="text">
+          </label>
+
+          <label id="vifa-form-date-wrap" class="hidden">
+            Fecha del formulario
+            <input id="activity-vifa-form-date" type="date">
+          </label>
+
+          <label id="vifa-form-number-wrap" class="hidden">
+            Número consecutivo del formulario
+            <input id="activity-vifa-form-number" type="text">
+          </label>
+
+          <label id="vifa-quarter-wrap" class="hidden">
+            Trimestre de ejecución
+            <select id="activity-vifa-quarter">
+              <option value="">Seleccione un trimestre</option>
+              <option value="T1">T1</option>
+              <option value="T2">T2</option>
+              <option value="T3">T3</option>
+              <option value="T4">T4</option>
+            </select>
           </label>
         </div>
 
@@ -3602,15 +3654,9 @@ function renderActivityForm(editingRow = null) {
             >
           </label>
 
-          <label
-            id="activity-school-wrap"
-            class="hidden"
-          >
+          <label id="activity-school-wrap">
             Centro educativo
-            <input
-              id="activity-school"
-              type="text"
-            >
+            <select id="activity-school" disabled></select>
           </label>
         </div>
 
@@ -3710,13 +3756,20 @@ function renderActivityForm(editingRow = null) {
             </div>
           </label>
 
-          <label class="form-grid-full">
-            Número de seguimiento de la actividad realizada
-            <input
-              id="activity-follow-up-number"
-              type="text"
-              required
-            >
+          <label>
+            Número de seguimiento
+            <select id="activity-follow-up-type" required>
+              <option value="">Seleccione una opción</option>
+              <option value="ACCIÓN OPERATIVA">Acción operativa</option>
+              <option value="ORDEN DE OPERACIÓN">Orden de operación</option>
+              <option value="ACTA DE FINALIZACIÓN">Acta de finalización</option>
+              <option value="OFICIO DE DELEGACIÓN">Oficio de delegación</option>
+            </select>
+          </label>
+
+          <label>
+            Número consecutivo
+            <input id="activity-follow-up-number" type="text" required>
           </label>
         </div>
 
@@ -3807,59 +3860,80 @@ function setupActivityForm(editingRow) {
   }
 
   function updateProgressCard() {
-    const option =
-      getSelectedActivityOption();
+    const option = getSelectedActivityOption();
+    const card = $("activity-progress-card");
+    const planning = $("vifa-planning-details");
+    const isVifa = isVifaOption(option);
+    const quarterly = Boolean(option?.es_control_trimestral);
 
-    const card =
-      $("activity-progress-card");
+    [
+      "vifa-form-name-wrap",
+      "vifa-form-date-wrap",
+      "vifa-form-number-wrap"
+    ].forEach((id) => $(id)?.classList.toggle("hidden", !isVifa));
+
+    $("vifa-quarter-wrap")?.classList.toggle("hidden", !quarterly);
+
+    [
+      "activity-vifa-form-name",
+      "activity-vifa-form-date",
+      "activity-vifa-form-number"
+    ].forEach((id) => {
+      if ($(id)) $(id).required = isVifa;
+    });
+
+    if ($("activity-vifa-quarter")) {
+      $("activity-vifa-quarter").required = quarterly;
+    }
 
     if (!option) {
       card.innerHTML = "";
-      $("activity-advance")
-        .removeAttribute("max");
+      planning?.classList.add("hidden");
+      if (planning) planning.innerHTML = "";
+      $("activity-advance").removeAttribute("max");
       $("activity-advance").disabled = false;
       return;
     }
 
-    card.innerHTML = `
-      <div>
-        <span>Meta</span>
-        <strong>${formatNumber(option.meta)}</strong>
-      </div>
-
-      <div>
-        <span>Avance validado</span>
-        <strong>
-          ${formatNumber(option.avance_validado)}
-        </strong>
-      </div>
-
-      <div>
-        <span>En revisión</span>
-        <strong>
-          ${formatNumber(option.avance_en_revision)}
-        </strong>
-      </div>
-
-      <div>
-        <span>Disponible</span>
-        <strong>
-          ${formatNumber(option.disponible_registro)}
-        </strong>
-      </div>
-    `;
-
-    $("activity-advance").max =
-      option.disponible_registro;
-
-    if (
-      option.disponible_registro <= 0 &&
-      !state.editingObjectId
-    ) {
-      $("activity-advance").value = "";
+    if (quarterly) {
+      const quarterCards = [1, 2, 3, 4].map((number) => {
+        const fulfilled = numberValue(option[`cumplimiento_t${number}`]) > 0;
+        const reviewing = numberValue(option[`en_revision_t${number}`]) > 0;
+        const label = fulfilled ? "Cumplido" : reviewing ? "En revisión" : "Pendiente";
+        return `<div><span>T${number}</span><strong>${label}</strong></div>`;
+      }).join("");
+      card.innerHTML = quarterCards;
+      $("activity-advance").value = 1;
       $("activity-advance").disabled = true;
     } else {
-      $("activity-advance").disabled = false;
+      card.innerHTML = `
+        <div><span>${isVifa ? "Línea base" : "Meta"}</span><strong>${formatNumber(option.meta)}</strong></div>
+        <div><span>Avance validado</span><strong>${formatNumber(option.avance_validado)}</strong></div>
+        <div><span>En revisión</span><strong>${formatNumber(option.avance_en_revision)}</strong></div>
+        <div><span>Disponible</span><strong>${formatNumber(option.disponible_registro)}</strong></div>
+      `;
+      $("activity-advance").max = option.disponible_registro;
+      if (option.disponible_registro <= 0 && !state.editingObjectId) {
+        $("activity-advance").value = "";
+        $("activity-advance").disabled = true;
+      } else {
+        $("activity-advance").disabled = false;
+      }
+    }
+
+    if (isVifa && planning) {
+      planning.classList.remove("hidden");
+      planning.innerHTML = `
+        <div><span>Código</span><strong>${escapeHtml(option.codigo_actividad || "")}</strong></div>
+        <div><span>Mes programado</span><strong>${escapeHtml(option.mes_programado || "Trimestral")}</strong></div>
+        <div><span>Trimestre</span><strong>${escapeHtml(option.trimestre_programado || "")}</strong></div>
+        <div><span>Eje</span><strong>${escapeHtml(option.eje || "")}</strong></div>
+        <div><span>Población objetivo</span><strong>${escapeHtml(option.poblacion_objetivo || "")}</strong></div>
+        <div><span>Unidad de medida</span><strong>${escapeHtml(option.unidad_medida || "")}</strong></div>
+      `;
+    } else {
+      planning?.classList.add("hidden");
+      if (planning) planning.innerHTML = "";
     }
   }
 
@@ -4091,6 +4165,13 @@ function setupPlaceTypeSelector() {
     $("activity-place-type");
 
   fillSelect(
+    $("activity-school"),
+    getEducationalCenterOptions(),
+    false,
+    "Seleccione un centro educativo"
+  );
+
+  fillSelect(
     select,
     getPlaceTypeOptions(),
     false,
@@ -4133,41 +4214,16 @@ function updateOtherPlaceVisibility() {
 
 
 function updateSchoolFieldVisibility() {
-  const placeType =
-    normalize(
-      $("activity-place-type")?.value
-    );
-
+  const placeType = normalize($("activity-place-type")?.value);
   const educationalPlaceTypes = [
-    "CENTRO EDUCATIVO",
-    "ESCUELA",
-    "COLEGIO",
-    "UNIVERSIDAD",
-    "INSTITUCION EDUCATIVA"
+    "CENTRO EDUCATIVO", "ESCUELA", "COLEGIO", "UNIVERSIDAD", "INSTITUCION EDUCATIVA"
   ];
-
-  const showSchool =
-    educationalPlaceTypes.some(
-      (type) =>
-        placeType.includes(
-          normalize(type)
-        )
-    );
-
-  $("activity-school-wrap")
-    ?.classList.toggle(
-      "hidden",
-      !showSchool
-    );
-
-  if ($("activity-school")) {
-    $("activity-school").required =
-      showSchool;
-
-    if (!showSchool) {
-      $("activity-school").value = "";
-    }
-  }
+  const enabled = educationalPlaceTypes.some((type) => placeType.includes(normalize(type)));
+  const school = $("activity-school");
+  if (!school) return;
+  school.disabled = !enabled;
+  school.required = enabled;
+  if (!enabled) school.value = "";
 }
 
 function setupInstitutionSelector() {
@@ -4530,11 +4586,22 @@ function fillActivityForm(row) {
   $("activity-other-institution").value =
     "";
 
+  setSelectValue(
+    $("activity-follow-up-type"),
+    row.tipo_seguimiento || ""
+  );
+
   $("activity-follow-up-number").value =
+    row.numero_consecutivo ||
     row.numero_seguimiento ||
     row.numero_referencia ||
     row.numero_expediente ||
     "";
+
+  $("activity-vifa-form-name").value = row.formulario_vifa || "";
+  $("activity-vifa-form-date").value = dateInputValue(row.fecha_formulario_vifa);
+  $("activity-vifa-form-number").value = row.numero_formulario_vifa || "";
+  setSelectValue($("activity-vifa-quarter"), row.trimestre_ejecucion_vifa || "");
 
   $("activity-observations").value =
     row.observaciones || "";
@@ -4579,7 +4646,7 @@ async function submitActivity(event) {
 
     if (!selectedOption) {
       errors.push(
-        "Debe seleccionar una actividad válida con meta mayor que cero."
+        "Debe seleccionar una actividad válida."
       );
     }
 
@@ -4588,17 +4655,17 @@ async function submitActivity(event) {
         $("activity-advance").value
       );
 
-    if (quantity <= 0) {
-      errors.push(
-        "El avance realizado debe ser mayor a cero."
-      );
+    const isQuarterlyVifa = Boolean(selectedOption?.es_control_trimestral);
+
+    if (!isQuarterlyVifa && quantity <= 0) {
+      errors.push("El avance realizado debe ser mayor a cero.");
     }
 
     if (
       selectedOption &&
+      !isQuarterlyVifa &&
       !state.editingObjectId &&
-      quantity >
-        selectedOption.disponible_registro
+      quantity > selectedOption.disponible_registro
     ) {
       errors.push(
         `Solo puede registrar ${selectedOption.disponible_registro} como máximo para esta actividad.`
@@ -4742,12 +4809,11 @@ async function submitActivity(event) {
     }
 
 
-    const schoolFieldVisible =
-      !$("activity-school-wrap")
-        ?.classList.contains("hidden");
+    const schoolFieldEnabled =
+      !$("activity-school")?.disabled;
 
     if (
-      schoolFieldVisible &&
+      schoolFieldEnabled &&
       !$("activity-school")
         .value
         .trim()
@@ -4763,15 +4829,23 @@ async function submitActivity(event) {
     const otherInstitution =
       getOtherInstitutionsText();
 
-    const followUpNumber =
-      $("activity-follow-up-number")
-        .value
-        .trim();
+    const followUpType = $("activity-follow-up-type").value;
+    const followUpNumber = $("activity-follow-up-number").value.trim();
 
-    if (!followUpNumber) {
-      errors.push(
-        "Debe indicar el número de seguimiento de la actividad realizada."
-      );
+    if (!followUpType) errors.push("Debe seleccionar el tipo de seguimiento.");
+    if (!followUpNumber) errors.push("Debe indicar el número consecutivo.");
+
+    const isVifa = isVifaOption(selectedOption);
+    const vifaFormName = $("activity-vifa-form-name").value.trim();
+    const vifaFormDate = $("activity-vifa-form-date").value;
+    const vifaFormNumber = $("activity-vifa-form-number").value.trim();
+    const vifaQuarter = $("activity-vifa-quarter").value;
+
+    if (isVifa) {
+      if (!vifaFormName) errors.push("Debe indicar el formulario VIFA.");
+      if (!vifaFormDate) errors.push("Debe indicar la fecha del formulario VIFA.");
+      if (!vifaFormNumber) errors.push("Debe indicar el número consecutivo del formulario VIFA.");
+      if (isQuarterlyVifa && !vifaQuarter) errors.push("Debe seleccionar el trimestre de ejecución VIFA.");
     }
 
     if (!state.selectedPoint) {
@@ -4821,7 +4895,7 @@ async function submitActivity(event) {
         $("activity-time").value,
 
       avance_realizado:
-        quantity,
+        isQuarterlyVifa ? 1 : quantity,
 
       responsable:
         $("activity-responsible")
@@ -4887,8 +4961,53 @@ async function submitActivity(event) {
       otras_instituciones:
         otherInstitution,
 
-      numero_seguimiento:
+      tipo_seguimiento:
+        followUpType,
+
+      numero_consecutivo:
         followUpNumber,
+
+      numero_seguimiento:
+        `${followUpType}: ${followUpNumber}`,
+
+      id_planificacion_vifa:
+        isVifa ? selectedOption.id_planificacion : "",
+
+      codigo_actividad_vifa:
+        isVifa ? selectedOption.codigo_actividad : "",
+
+      eje_vifa:
+        isVifa ? selectedOption.eje : "",
+
+      plan_asociado_vifa:
+        isVifa ? selectedOption.plan_asociado : "",
+
+      poblacion_objetivo_vifa:
+        isVifa ? selectedOption.poblacion_objetivo : "",
+
+      mes_programado_vifa:
+        isVifa ? selectedOption.mes_programado : "",
+
+      trimestre_programado_vifa:
+        isVifa ? selectedOption.trimestre_programado : "",
+
+      tipo_medicion_vifa:
+        isVifa ? selectedOption.tipo_medicion : "",
+
+      linea_base_vifa:
+        isVifa ? numberValue(selectedOption.linea_base) : 0,
+
+      trimestre_ejecucion_vifa:
+        isQuarterlyVifa ? vifaQuarter : "",
+
+      formulario_vifa:
+        isVifa ? vifaFormName : "",
+
+      fecha_formulario_vifa:
+        isVifa && vifaFormDate ? new Date(`${vifaFormDate}T12:00:00`).getTime() : null,
+
+      numero_formulario_vifa:
+        isVifa ? vifaFormNumber : "",
 
       observaciones:
         $("activity-observations")
@@ -5541,7 +5660,12 @@ function renderActivityDataSections(row) {
       [
         ["Instituciones", row.instituciones],
         ["Otras instituciones", row.otras_instituciones],
-        ["Número de seguimiento", row.numero_seguimiento],
+        ["Tipo de seguimiento", row.tipo_seguimiento],
+        ["Número consecutivo", row.numero_consecutivo || row.numero_seguimiento],
+        ["Formulario VIFA", row.formulario_vifa],
+        ["Fecha formulario VIFA", formatDate(row.fecha_formulario_vifa)],
+        ["Número formulario VIFA", row.numero_formulario_vifa],
+        ["Trimestre ejecución VIFA", row.trimestre_ejecucion_vifa],
         ["Observaciones", row.observaciones]
       ]
     )}
@@ -8559,6 +8683,21 @@ function injectVisualEnhancements() {
     }
 
 
+    .vifa-planning-details {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0 0 20px;
+      padding: 18px;
+      border: 1px solid #d6e2f2;
+      border-radius: 18px;
+      background: #f7faff;
+    }
+
+    .vifa-planning-details div { display: grid; gap: 5px; }
+    .vifa-planning-details span { color: #66758b; font-size: .8rem; font-weight: 800; }
+    .vifa-planning-details strong { color: #073b8c; line-height: 1.35; }
+
     .national-viewer-filter-grid {
       display: grid;
       grid-template-columns:
@@ -8632,7 +8771,8 @@ function injectVisualEnhancements() {
       .pumi-mini-kpi-grid,
       .pumi-review-filters,
       .pumi-dashboard-filter-grid,
-      .national-viewer-filter-grid {
+      .national-viewer-filter-grid,
+      .vifa-planning-details {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
