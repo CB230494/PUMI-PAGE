@@ -1368,7 +1368,7 @@ function getNationalViewerBaseRows() {
       direccion_regional: item.direccion_regional || "",
       delegacion: item.delegacion || "",
       meta,
-      avance,
+      avance: advance,
       pendiente: pending,
       porcentaje_cumplimiento: percentage,
       estado_registro: "ACTIVO",
