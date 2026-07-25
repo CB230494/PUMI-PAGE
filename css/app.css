@@ -1623,3 +1623,6 @@ button {
   background: #fee2e2;
   color: #991b1b;
 }
+
+/* Informes PDF */
+.report-filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:20px 0}.report-filter-grid label{display:flex;flex-direction:column;gap:7px;font-weight:700}.report-filter-grid select,.report-filter-grid input{width:100%;padding:11px 12px;border:1px solid #ccd4df;border-radius:10px;background:#fff}.report-panel .form-actions{justify-content:flex-end}.vif-quarter-card{border:1px solid #d8dee8;border-radius:12px;padding:14px;margin-bottom:10px}
