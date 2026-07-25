@@ -338,6 +338,14 @@ function buildNavigation() {
     });
   }
 
+  if (isNationalCoordinatorRole() || isNationalViewerRole()) {
+    items.push({
+      id: "informes",
+      label: "Informes PDF",
+      icon: "📄"
+    });
+  }
+
   if (
     !isNationalViewerRole() &&
     role.includes("ADMIN")
@@ -418,6 +426,11 @@ function navigate(pageId, title) {
 
   if (pageId === "revision") {
     renderReviewModule();
+    return;
+  }
+
+  if (pageId === "informes") {
+    renderReportsModule();
     return;
   }
 
@@ -571,7 +584,7 @@ function getRows() {
 }
 
 function isSelectableActivityOption(item = {}) {
-  const isVifa = normalize(item.programa) === "VIFA";
+  const isVifa = normalize(item.programa) === "VIF";
   const isVifaQuarterly =
     isVifa &&
     (
@@ -593,7 +606,7 @@ function isRegistrableActivityOption(item = {}) {
     return false;
   }
 
-  if (normalize(item.programa) !== "VIFA") {
+  if (normalize(item.programa) !== "VIF") {
     return true;
   }
 
@@ -1048,7 +1061,7 @@ function getEducationalCenterOptions(
 }
 
 function isVifaOption(option) {
-  return normalize(option?.programa) === "VIFA";
+  return normalize(option?.programa) === "VIF";
 }
 
 function isHistorical(row) {
@@ -2761,7 +2774,7 @@ function renderKpisFromDashboard(kpis) {
 function renderKpisFromLocal() {
   const rows = getRows();
   const progress = buildProgressRows()
-    .filter((row) => normalize(row.program) !== "VIFA");
+    .filter((row) => normalize(row.program) !== "VIF");
 
   const meta = sumBy(progress, "meta");
   const advance = sumBy(progress, "advance");
@@ -2796,7 +2809,7 @@ function renderKpisFromLocal() {
 
   if (vifaSummary) {
     cards.push([
-      `VIFA ${quarter}`,
+      `VIF ${quarter}`,
       `${numberValue(vifaSummary.porcentaje).toFixed(1)}%`
     ]);
   }
@@ -2818,7 +2831,7 @@ function renderKpiCards(values) {
 }
 
 function getLocalVifaHistoricalAdvance(option = {}) {
-  if (normalize(option.programa) !== "VIFA") {
+  if (normalize(option.programa) !== "VIF") {
     return 0;
   }
 
@@ -2892,7 +2905,7 @@ function buildProgressRows(rows = getRows()) {
 
   for (const option of state.activityOptions || []) {
     if (
-      normalize(option.programa) !== "VIFA" ||
+      normalize(option.programa) !== "VIF" ||
       option.es_control_trimestral === true ||
       numberValue(option.meta) <= 0
     ) {
@@ -3019,7 +3032,7 @@ function isVifaRecordInCurrentScope(row = {}) {
 function getVifaPlanningOptions() {
   return (state.activityOptions || []).filter(
     (option) =>
-      normalize(option.programa) === "VIFA" &&
+      normalize(option.programa) === "VIF" &&
       isVifaRecordInCurrentScope(option)
   );
 }
@@ -3033,7 +3046,7 @@ function getVifaHistoricalRows() {
 function getVifaValidatedRows() {
   return getRows().filter(
     (row) =>
-      normalize(row.programa) === "VIFA" &&
+      normalize(row.programa) === "VIF" &&
       !isHistorical(row) &&
       isNationalApproved(row) &&
       isVifaRecordInCurrentScope(row)
@@ -3272,8 +3285,8 @@ function renderVifaProgramSummaryCard() {
 
   return `
     <div class="program-progress-row vifa-quarter-program-row">
-      <div class="program-progress-name" title="VIFA">
-        VIFA
+      <div class="program-progress-name" title="VIF">
+        VIF
       </div>
 
       <div class="program-progress-center">
@@ -3316,7 +3329,7 @@ function renderProgramSummaryFromLocal() {
   const grouped = {};
 
   for (const row of buildProgressRows()) {
-    if (normalize(row.program) === "VIFA") {
+    if (normalize(row.program) === "VIF") {
       continue;
     }
 
@@ -3363,7 +3376,7 @@ function renderProgramSummaryFromDashboard(programs) {
   const visiblePrograms =
     (programs || []).filter(
       (item) =>
-        normalize(item.programa) !== "VIFA" &&
+        normalize(item.programa) !== "VIF" &&
         numberValue(item.meta) > 0
     );
 
@@ -3421,7 +3434,7 @@ function renderProgramSummaryFromDashboard(programs) {
 
 function renderActivityBreakdownFromLocal() {
   const rows = buildProgressRows()
-    .filter((row) => normalize(row.program) !== "VIFA")
+    .filter((row) => normalize(row.program) !== "VIF")
     .sort((a, b) => {
       const programComparison =
         a.program.localeCompare(
@@ -3462,7 +3475,7 @@ function renderVifaQuarterBreakdown() {
     <section style="margin-bottom:24px;">
       <div class="panel-header" style="margin-bottom:12px;">
         <div>
-          <span class="panel-kicker">VIFA</span>
+          <span class="panel-kicker">VIF</span>
           <h3>Cumplimiento por trimestre</h3>
         </div>
       </div>
@@ -3498,7 +3511,7 @@ function renderVifaQuarterBreakdown() {
 
       <div class="panel-header" style="margin:22px 0 12px;">
         <div>
-          <span class="panel-kicker">Detalle VIFA</span>
+          <span class="panel-kicker">Detalle VIF</span>
           <h3>Actividades programadas por trimestre</h3>
         </div>
       </div>
@@ -3543,7 +3556,7 @@ function renderActivityBreakdownTable(rows) {
   const visibleRows =
     (rows || []).filter(
       (row) =>
-        normalize(row.programa) !== "VIFA" &&
+        normalize(row.programa) !== "VIF" &&
         numberValue(row.meta) > 0
     );
 
@@ -5484,10 +5497,10 @@ async function submitActivity(event) {
     const vifaQuarter = $("activity-vifa-quarter").value;
 
     if (isVifa) {
-      if (!vifaFormName) errors.push("Debe indicar el formulario VIFA.");
-      if (!vifaFormDate) errors.push("Debe indicar la fecha del formulario VIFA.");
-      if (!vifaFormNumber) errors.push("Debe indicar el número consecutivo del formulario VIFA.");
-      if (isQuarterlyVifa && !vifaQuarter) errors.push("Debe seleccionar el trimestre de ejecución VIFA.");
+      if (!vifaFormName) errors.push("Debe indicar el formulario VIF.");
+      if (!vifaFormDate) errors.push("Debe indicar la fecha del formulario VIF.");
+      if (!vifaFormNumber) errors.push("Debe indicar el número consecutivo del formulario VIF.");
+      if (isQuarterlyVifa && !vifaQuarter) errors.push("Debe seleccionar el trimestre de ejecución VIF.");
     }
 
     if (!state.selectedPoint) {
@@ -5938,16 +5951,14 @@ function useGps() {
 ========================================================= */
 
 function renderMyRecords() {
-  const username = normalize(
-    state.user?.username
-  );
-
   const rows = getRows().filter(
     (row) =>
       !isHistorical(row) &&
       normalize(row.estado_registro) !== "ELIMINADO" &&
-      normalize(row.usuario_registra) ===
-        username
+      (
+        !isDelegationRole() ||
+        sameDelegation(row.delegacion, state.user?.delegation)
+      )
   );
 
   function getRecordPermissions(row) {
@@ -6304,10 +6315,10 @@ function renderActivityDataSections(row) {
         ["Otras instituciones", row.otras_instituciones],
         ["Tipo de seguimiento", row.tipo_seguimiento],
         ["Número consecutivo", row.numero_consecutivo || row.numero_seguimiento],
-        ["Formulario VIFA", row.formulario_vifa],
-        ["Fecha formulario VIFA", formatDate(row.fecha_formulario_vifa)],
-        ["Número formulario VIFA", row.numero_formulario_vifa],
-        ["Trimestre ejecución VIFA", row.trimestre_ejecucion_vifa],
+        ["Formulario VIF", row.formulario_vifa],
+        ["Fecha formulario VIF", formatDate(row.fecha_formulario_vifa)],
+        ["Número formulario VIF", row.numero_formulario_vifa],
+        ["Trimestre ejecución VIF", row.trimestre_ejecucion_vifa],
         ["Observaciones", row.observaciones]
       ]
     )}
@@ -9562,8 +9573,58 @@ function setSelectValue(
   select.value = "";
 }
 
+
+/* =========================================================
+   INFORMES PDF
+========================================================= */
+function renderReportsModule() {
+  const coordinator = isNationalCoordinatorRole();
+  const assignedProgram = coordinator ? (state.user?.program || "") : "";
+  const programs = [...new Set(getRows().map(r => normalize(r.programa)).filter(Boolean))]
+    .map(p => p === "VIFA" ? "VIF" : p)
+    .sort((a,b) => a.localeCompare(b,"es"));
+  const regions = [...new Set(getRows().map(r => String(r.direccion_regional || "").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+  const delegations = [...new Set(getRows().map(r => String(r.delegacion || "").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+
+  $("coming-page").innerHTML = `
+    <article class="panel-card report-panel">
+      <div class="module-heading"><div><span class="panel-kicker">Reporte institucional</span><h2>Generar informe PDF</h2></div></div>
+      <p class="page-scope">${coordinator ? `El informe está limitado al programa ${escapeHtml(assignedProgram || "asignado")}.` : "El Visor Nacional puede generar informes de todo el país o aplicar filtros."}</p>
+      <div class="report-filter-grid">
+        <label>Programa<select id="report-program" ${coordinator ? "disabled" : ""}>
+          ${coordinator ? `<option value="${escapeHtml(assignedProgram)}">${escapeHtml(assignedProgram)}</option>` : `<option value="">Todos</option>${programs.map(x=>`<option>${escapeHtml(x)}</option>`).join("")}`}
+        </select></label>
+        <label>Región<select id="report-region"><option value="">Todas</option>${regions.map(x=>`<option>${escapeHtml(x)}</option>`).join("")}</select></label>
+        <label>Delegación<select id="report-delegation"><option value="">Todas</option>${delegations.map(x=>`<option>${escapeHtml(x)}</option>`).join("")}</select></label>
+        <label>Trimestre<select id="report-quarter"><option value="">Todos</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></label>
+        <label>Estado<select id="report-status"><option value="">Todos</option><option value="BORRADOR">Borrador</option><option value="PENDIENTE_REGIONAL">Pendiente regional</option><option value="DEVUELTO_REGIONAL">Devuelto regional</option><option value="PENDIENTE_NACIONAL">Pendiente nacional</option><option value="VALIDADO_NACIONAL">Validado nacional</option><option value="NO_VALIDADO_NACIONAL">No validado nacional</option></select></label>
+        <label>Fecha inicial<input id="report-from" type="date"></label>
+        <label>Fecha final<input id="report-to" type="date"></label>
+      </div>
+      <div class="form-actions"><button id="download-report-pdf" class="btn btn-primary">📄 Descargar informe PDF</button></div>
+    </article>`;
+
+  $("download-report-pdf")?.addEventListener("click", async () => {
+    try {
+      const params = {
+        programa: coordinator ? assignedProgram : $("report-program")?.value,
+        region: $("report-region")?.value,
+        delegacion: $("report-delegation")?.value,
+        trimestre: $("report-quarter")?.value,
+        estado: $("report-status")?.value,
+        desde: $("report-from")?.value,
+        hasta: $("report-to")?.value
+      };
+      await api.downloadPdfReport(params);
+      showToast("Informe PDF generado correctamente.");
+    } catch (error) {
+      showToast(error.message || "No fue posible generar el informe.", true);
+    }
+  });
+}
+
 function normalize(value) {
-  return String(value || "")
+  const normalized = String(value || "")
     .trim()
     .normalize("NFD")
     .replace(
@@ -9571,6 +9632,8 @@ function normalize(value) {
       ""
     )
     .toUpperCase();
+
+  return normalized === "VIFA" ? "VIF" : normalized;
 }
 
 function normalizeTerritory(value) {
