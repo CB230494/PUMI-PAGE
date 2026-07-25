@@ -9579,33 +9579,70 @@ function setSelectValue(
 ========================================================= */
 function renderReportsModule() {
   const coordinator = isNationalCoordinatorRole();
-  const assignedProgram = coordinator ? (state.user?.program || "") : "";
-  const programs = [...new Set(getRows().map(r => normalize(r.programa)).filter(Boolean))]
-    .map(p => p === "VIFA" ? "VIF" : p)
-    .sort((a,b) => a.localeCompare(b,"es"));
-  const regions = [...new Set(getRows().map(r => String(r.direccion_regional || "").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
-  const delegations = [...new Set(getRows().map(r => String(r.delegacion || "").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+  const assignedProgramRaw =
+    state.user?.program ||
+    state.user?.programa ||
+    state.user?.assignedProgram ||
+    "";
+  const assignedProgram = normalize(assignedProgramRaw) === "VIF" ? "VIF" : String(assignedProgramRaw || "").trim();
+
+  const programSources = [
+    ...getRows().map((row) => row.programa),
+    ...(state.activityOptions || []).map((item) => item.programa)
+  ];
+  const programs = [...new Set(programSources.map((value) => normalize(value)).filter(Boolean))]
+    .map((program) => program === "VIFA" ? "VIF" : program)
+    .sort((a, b) => a.localeCompare(b, "es"));
+
+  const regions = [...new Set(getRows().map(r => String(r.direccion_regional || "").trim()).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,"es"));
+  const delegations = [...new Set(getRows().map(r => String(r.delegacion || "").trim()).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,"es"));
+
+  const programField = coordinator
+    ? `<div class="report-readonly-field">
+         <span>Programa asignado</span>
+         <strong>${escapeHtml(assignedProgram || "No configurado")}</strong>
+         <small>El Coordinador Nacional solo puede generar informes de su programa.</small>
+         <input id="report-program" type="hidden" value="${escapeHtml(assignedProgram)}">
+       </div>`
+    : `<label>Programa
+         <select id="report-program">
+           <option value="">Todos los programas</option>
+           ${programs.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}
+         </select>
+       </label>`;
 
   $("coming-page").innerHTML = `
     <article class="panel-card report-panel">
-      <div class="module-heading"><div><span class="panel-kicker">Reporte institucional</span><h2>Generar informe PDF</h2></div></div>
-      <p class="page-scope">${coordinator ? `El informe está limitado al programa ${escapeHtml(assignedProgram || "asignado")}.` : "El Visor Nacional puede generar informes de todo el país o aplicar filtros."}</p>
+      <div class="report-hero">
+        <div>
+          <span class="panel-kicker">Reporte institucional</span>
+          <h2>Generar informe PDF</h2>
+          <p>${coordinator
+            ? `El informe está limitado al programa <strong>${escapeHtml(assignedProgram || "asignado")}</strong>.`
+            : "El Visor Nacional puede generar un informe nacional completo o aplicar filtros."}</p>
+        </div>
+        <div class="report-hero-icon">📊</div>
+      </div>
       <div class="report-filter-grid">
-        <label>Programa<select id="report-program" ${coordinator ? "disabled" : ""}>
-          ${coordinator ? `<option value="${escapeHtml(assignedProgram)}">${escapeHtml(assignedProgram)}</option>` : `<option value="">Todos</option>${programs.map(x=>`<option>${escapeHtml(x)}</option>`).join("")}`}
-        </select></label>
-        <label>Región<select id="report-region"><option value="">Todas</option>${regions.map(x=>`<option>${escapeHtml(x)}</option>`).join("")}</select></label>
-        <label>Delegación<select id="report-delegation"><option value="">Todas</option>${delegations.map(x=>`<option>${escapeHtml(x)}</option>`).join("")}</select></label>
+        ${programField}
+        <label>Región<select id="report-region"><option value="">Todas las regiones</option>${regions.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>
+        <label>Delegación<select id="report-delegation"><option value="">Todas las delegaciones</option>${delegations.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>
         <label>Trimestre<select id="report-quarter"><option value="">Todos</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></label>
-        <label>Estado<select id="report-status"><option value="">Todos</option><option value="BORRADOR">Borrador</option><option value="PENDIENTE_REGIONAL">Pendiente regional</option><option value="DEVUELTO_REGIONAL">Devuelto regional</option><option value="PENDIENTE_NACIONAL">Pendiente nacional</option><option value="VALIDADO_NACIONAL">Validado nacional</option><option value="NO_VALIDADO_NACIONAL">No validado nacional</option></select></label>
+        <label>Estado<select id="report-status"><option value="">Todos los estados</option><option value="BORRADOR">Borrador</option><option value="PENDIENTE_REGIONAL">Pendiente regional</option><option value="DEVUELTO_REGIONAL">Devuelto regional</option><option value="PENDIENTE_NACIONAL">Pendiente nacional</option><option value="VALIDADO_NACIONAL">Validado nacional</option><option value="NO_VALIDADO_NACIONAL">No validado nacional</option></select></label>
         <label>Fecha inicial<input id="report-from" type="date"></label>
         <label>Fecha final<input id="report-to" type="date"></label>
       </div>
-      <div class="form-actions"><button id="download-report-pdf" class="btn btn-primary">📄 Descargar informe PDF</button></div>
+      <div class="report-note"><strong>Contenido:</strong> portada, resumen ejecutivo, indicadores, VIF por trimestre, distribución territorial, estados de validación y detalle de actividades.</div>
+      <div class="form-actions"><button id="download-report-pdf" class="btn btn-primary">📄 Descargar informe profesional</button></div>
     </article>`;
 
   $("download-report-pdf")?.addEventListener("click", async () => {
     try {
+      if (coordinator && !assignedProgram) {
+        throw new Error("El usuario coordinador no tiene un programa asignado. Revise el campo programa en PUMI_USUARIOS y vuelva a iniciar sesión.");
+      }
       const params = {
         programa: coordinator ? assignedProgram : $("report-program")?.value,
         region: $("report-region")?.value,
