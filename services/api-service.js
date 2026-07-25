@@ -319,4 +319,36 @@ export class ApiService {
       "/api/schema"
     );
   }
+
+  /* =========================================================
+     INFORMES PDF
+  ========================================================= */
+
+  async downloadPdfReport(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+
+    const response = await fetch(
+      `${APP_CONFIG.apiBaseUrl}/api/informes/pdf?${params.toString()}`,
+      { headers: this.token ? { Authorization: `Bearer ${this.token}` } : {} }
+    );
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || `Error ${response.status} al generar el PDF.`);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Informe_PUMI_${new Date().toISOString().slice(0,10)}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
 }
