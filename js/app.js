@@ -1312,12 +1312,83 @@ function getNationalViewerTablePanel() {
 }
 
 function getNationalViewerBaseRows() {
-  return (state.actividades || [])
+  const arcgisRows = (state.actividades || [])
     .filter(isNationalViewerVisibleActivityFeature)
     .map((feature) => ({
       ...(feature.attributes || {}),
+      programa:
+        normalize(feature.attributes?.programa) === "VIF"
+          ? "VIF"
+          : feature.attributes?.programa,
       __geometry: feature.geometry || null
     }));
+
+  /*
+   * El histórico de VIF se consulta desde PAGE y no desde PUMI_ACTIVIDADES.
+   * Por eso se incorpora aquí como filas de consulta para que VIF aparezca
+   * en el Visor Nacional aun cuando todavía no existan registros nuevos VIF
+   * almacenados en ArcGIS.
+   */
+  const optionByCode = new Map(
+    (state.activityOptions || [])
+      .filter((option) => normalize(option?.programa) === "VIF")
+      .map((option) => [
+        normalize(
+          option.codigo_actividad_vifa ||
+          option.codigo_actividad ||
+          option.codigo ||
+          ""
+        ),
+        option
+      ])
+  );
+
+  const historicalRows = (state.vifaHistorico || []).map((item, index) => {
+    const code =
+      item.codigo_actividad_vifa ||
+      item.codigo_actividad ||
+      `VIF-${String(item.numero_actividad || "").padStart(2, "0")}`;
+
+    const option = optionByCode.get(normalize(code)) || {};
+    const meta = numberValue(item.linea_base);
+    const advance = numberValue(item.avance);
+    const cappedAdvance = meta > 0 ? Math.min(advance, meta) : advance;
+    const pending = meta > 0 ? Math.max(meta - cappedAdvance, 0) : 0;
+    const percentage = meta > 0
+      ? Math.min((advance / meta) * 100, 100)
+      : (advance > 0 ? 100 : 0);
+
+    return {
+      id_pumi: `VIF-HIST-${index + 1}`,
+      programa: "VIF",
+      actividad:
+        option.actividad ||
+        option.nombre_actividad ||
+        `Actividad ${item.numero_actividad || code}`,
+      direccion_regional: item.direccion_regional || "",
+      delegacion: item.delegacion || "",
+      meta,
+      avance,
+      pendiente: pending,
+      porcentaje_cumplimiento: percentage,
+      estado_registro: "ACTIVO",
+      estado_flujo: "VALIDADO_NACIONAL",
+      estado_regional: "Revisado regional",
+      estado_nacional: "Validado nacional",
+      archivo_origen: "Histórico local VIF 2026",
+      codigo_actividad_vifa: code,
+      trimestre_programado_vifa: item.trimestre || "",
+      trimestre_ejecucion_vifa: item.trimestre || "",
+      tipo_medicion_vifa: item.control_trimestral
+        ? "CONTROL_TRIMESTRAL"
+        : "LINEA_BASE",
+      linea_base_vifa: meta,
+      __isLocalVifHistorical: true,
+      __geometry: null
+    };
+  });
+
+  return [...arcgisRows, ...historicalRows];
 }
 
 /*
@@ -1992,18 +2063,30 @@ function refreshNationalViewerDependentFilters() {
         )
     );
 
-  const programs = [
-    ...new Set(
-      filteredByDelegation
-        .map(
-          (row) =>
-            String(
-              row.programa || ""
-            ).trim()
-        )
-        .filter(Boolean)
+  const programMap = new Map();
+
+  filteredByDelegation.forEach((row) => {
+    const rawProgram = String(row.programa || "").trim();
+    if (!rawProgram) return;
+
+    const normalizedProgram = normalize(rawProgram);
+    programMap.set(
+      normalizedProgram,
+      normalizedProgram === "VIF" ? "VIF" : rawProgram
+    );
+  });
+
+  /* VIF debe estar disponible porque su histórico vive en PAGE. */
+  if (
+    (state.vifaHistorico || []).length > 0 ||
+    (state.activityOptions || []).some(
+      (option) => normalize(option?.programa) === "VIF"
     )
-  ].sort((a, b) =>
+  ) {
+    programMap.set("VIF", "VIF");
+  }
+
+  const programs = [...programMap.values()].sort((a, b) =>
     a.localeCompare(
       b,
       "es",
