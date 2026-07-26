@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260725-pdf-filename2";
+import { ApiService } from "../services/api-service.js?v=20260726-regional-extra1";
 
 const api = new ApiService();
 
@@ -340,7 +340,7 @@ function buildNavigation() {
     });
   }
 
-  if (isNationalCoordinatorRole() || isNationalViewerRole()) {
+  if (isRegionalRole() || isNationalCoordinatorRole() || isNationalViewerRole()) {
     items.push({
       id: "informes",
       label: "Informes PDF",
@@ -490,7 +490,7 @@ async function loadData() {
       api.getDelegations(),
       api.getActivityOptions(),
       api.getDashboard(),
-      loadStaticJson("./data/vifa-historico.json", { registros: [] }),
+      loadStaticJson("./data/vif-historico.json", { registros: [] }),
       loadStaticJson("./data/centros-educativos.json", { centros: [] })
     ]);
 
@@ -1091,7 +1091,21 @@ function isRegionalRole() {
 
 function isNationalCoordinatorRole() {
   const role = getCurrentRole();
-  return role.includes("COORDIN") && role.includes("NACIONAL");
+  return role.includes("COORDIN") && !role.includes("REGIONAL");
+}
+
+function isAdditionalActivityValue(value = "") {
+  return normalize(value).startsWith("ADICIONAL_NO_PROGRAMADA");
+}
+
+function isAdditionalActivityRow(row = {}) {
+  return isAdditionalActivityValue(row.tipo_seguimiento);
+}
+
+function getStoredFollowUpType(value = "") {
+  const raw = String(value || "").trim();
+  if (!isAdditionalActivityValue(raw)) return raw;
+  return raw.split("|").slice(1).join("|").trim();
 }
 
 function isNationalViewerRole() {
@@ -2285,10 +2299,7 @@ function buildNationalViewerDelegationRows(
         group.activities.reduce(
           (total, item) =>
             total +
-            Math.min(
-              numberValue(item.avance),
-              numberValue(item.meta)
-            ),
+            numberValue(item.avance),
           0
         );
 
@@ -2842,19 +2853,20 @@ function toggleBreakdownPanel(visible) {
 }
 
 function renderKpisFromDashboard(kpis) {
-  renderKpiCards([
+  const quarter = getCurrentVifaQuarter();
+  const vifSummary = buildVifaQuarterSummary().find((item) => item.trimestre === quarter);
+  const cards = [
     ["Registros", numberValue(kpis.registros)],
     [`Meta anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.meta)],
     [`Avance anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.avance)],
     [`Pendiente anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.pendiente)],
-    [
-      `% anual (${ANNUAL_PROGRAMS_LABEL})`,
-      `${numberValue(
-        kpis.porcentaje_avance
-      ).toFixed(1)}%`
-    ],
+    [`% anual (${ANNUAL_PROGRAMS_LABEL})`, `${numberValue(kpis.porcentaje_avance).toFixed(1)}%`],
     ["Participantes", numberValue(kpis.participantes)]
-  ]);
+  ];
+  if (vifSummary && numberValue(vifSummary.programadas) > 0) {
+    cards.push([`VIF ${quarter}`, `${numberValue(vifSummary.porcentaje).toFixed(1)}%`]);
+  }
+  renderKpiCards(cards);
 }
 
 function renderKpisFromLocal() {
@@ -2948,6 +2960,7 @@ function buildProgressRows(rows = getRows()) {
   const grouped = new Map();
 
   for (const row of rows) {
+    if (isAdditionalActivityRow(row)) continue;
     const program =
       String(row.programa || "").trim();
 
@@ -3017,28 +3030,15 @@ function buildProgressRows(rows = getRows()) {
         numberValue(item.meta) > 0
     )
     .map((item) => {
-      const cappedAdvance =
-        Math.min(
-          numberValue(item.advance),
-          numberValue(item.meta)
-        );
-
-      const pending = Math.max(
-        item.meta - cappedAdvance,
-        0
-      );
-
-      const percentage =
-        item.meta > 0
-          ? Math.min(
-              (cappedAdvance / item.meta) * 100,
-              100
-            )
-          : 0;
+      const actualAdvance = numberValue(item.advance);
+      const pending = Math.max(item.meta - actualAdvance, 0);
+      const percentage = item.meta > 0
+        ? Math.min((actualAdvance / item.meta) * 100, 100)
+        : 0;
 
       return {
         ...item,
-        advance: cappedAdvance,
+        advance: actualAdvance,
         pending,
         percentage
       };
@@ -4081,20 +4081,20 @@ function renderActivityForm(editingRow = null) {
         novalidate
       >
         <div class="form-grid">
-          <label>
+          <label class="form-grid-full">
             Tipo de registro
             <select id="activity-record-type">
               <option value="PLANIFICADA">Actividad planificada</option>
               <option value="ADICIONAL_NO_PROGRAMADA">Actividad adicional no programada</option>
             </select>
-            <small class="field-help">La actividad adicional se contabiliza, pasa por revisión, pero no modifica la meta ni el avance planificado.</small>
+            <small>La actividad adicional se contabiliza por separado y no modifica la meta ni el avance planificado.</small>
           </label>
 
           <label>
             Programa
             <select
               id="activity-program"
-             
+              required
             ></select>
           </label>
 
@@ -4102,7 +4102,7 @@ function renderActivityForm(editingRow = null) {
             Actividad
             <select
               id="activity-name"
-             
+              required
             ></select>
           </label>
         </div>
@@ -4120,7 +4120,7 @@ function renderActivityForm(editingRow = null) {
             <input
               id="activity-date"
               type="date"
-             
+              required
             >
           </label>
 
@@ -4139,7 +4139,7 @@ function renderActivityForm(editingRow = null) {
               type="number"
               min="1"
               step="1"
-             
+              required
             >
           </label>
 
@@ -4148,7 +4148,7 @@ function renderActivityForm(editingRow = null) {
             <input
               id="activity-responsible"
               type="text"
-             
+              required
             >
           </label>
 
@@ -4202,7 +4202,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
 
@@ -4214,7 +4214,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
 
@@ -4226,7 +4226,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
 
@@ -4238,7 +4238,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
 
@@ -4250,7 +4250,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
 
@@ -4262,7 +4262,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
 
@@ -4274,7 +4274,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
 
@@ -4286,7 +4286,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
 
@@ -4298,7 +4298,7 @@ function renderActivityForm(editingRow = null) {
               min="0"
               step="1"
               value="0"
-             
+              required
             >
           </label>
         </div>
@@ -4312,7 +4312,7 @@ function renderActivityForm(editingRow = null) {
             Provincia
             <select
               id="activity-province"
-             
+              required
             ></select>
           </label>
 
@@ -4338,7 +4338,7 @@ function renderActivityForm(editingRow = null) {
             Tipo de lugar
             <select
               id="activity-place-type"
-             
+              required
             ></select>
           </label>
 
@@ -4457,7 +4457,7 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Número de seguimiento
-            <select id="activity-follow-up-type">
+            <select id="activity-follow-up-type" required>
               <option value="">Seleccione una opción</option>
               <option value="ACCIÓN OPERATIVA">Acción operativa</option>
               <option value="ORDEN DE OPERACIÓN">Orden de operación</option>
@@ -4468,7 +4468,7 @@ function renderActivityForm(editingRow = null) {
 
           <label>
             Número consecutivo
-            <input id="activity-follow-up-number" type="text">
+            <input id="activity-follow-up-number" type="text" required>
           </label>
         </div>
 
@@ -4513,13 +4513,11 @@ function setupActivityForm(editingRow) {
     $("activity-name");
 
   const recordTypeSelect = $("activity-record-type");
-  const isAdditionalRecord = () =>
-    recordTypeSelect?.value === "ADICIONAL_NO_PROGRAMADA";
+  const isAdditionalMode = () => recordTypeSelect?.value === "ADICIONAL_NO_PROGRAMADA";
 
-  const validOptions =
-    state.activityOptions.filter(
-      isRegistrableActivityOption
-    );
+  const validOptions = state.activityOptions.filter((item) =>
+    isRegistrableActivityOption(item) || isSelectableActivityOption(item)
+  );
 
   const programs = [
     ...new Set(
@@ -4542,13 +4540,10 @@ function setupActivityForm(editingRow) {
     const program =
       programSelect.value;
 
-    const options =
-      validOptions.filter(
-        (item) =>
-          normalize(item.programa) ===
-          normalize(program) &&
-          isSelectableActivityOption(item)
-      );
+    const options = validOptions.filter((item) =>
+      normalize(item.programa) === normalize(program) &&
+      (isAdditionalMode() || isSelectableActivityOption(item))
+    );
 
     fillSelect(
       activitySelect,
@@ -4567,13 +4562,14 @@ function setupActivityForm(editingRow) {
     const card = $("activity-progress-card");
     const planning = $("vifa-planning-details");
     const isVifa = isVifaOption(option);
-    const quarterly = Boolean(option?.es_control_trimestral);
+    const additional = isAdditionalMode();
+    const quarterly = Boolean(option?.es_control_trimestral) && !additional;
 
     [
       "vifa-form-name-wrap",
       "vifa-form-date-wrap",
       "vifa-form-number-wrap"
-    ].forEach((id) => $(id)?.classList.toggle("hidden", !isVifa));
+    ].forEach((id) => $(id)?.classList.toggle("hidden", !(isVifa || additional)));
 
     $("vifa-quarter-wrap")?.classList.toggle("hidden", !quarterly);
 
@@ -4582,11 +4578,11 @@ function setupActivityForm(editingRow) {
       "activity-vifa-form-date",
       "activity-vifa-form-number"
     ].forEach((id) => {
-      if ($(id)) $(id).required = isVifa;
+      if ($(id)) $(id).required = false;
     });
 
     if ($("activity-vifa-quarter")) {
-      $("activity-vifa-quarter").required = quarterly;
+      $("activity-vifa-quarter").required = false;
     }
 
     if (!option) {
@@ -4598,7 +4594,16 @@ function setupActivityForm(editingRow) {
       return;
     }
 
-    if (quarterly) {
+    if (additional) {
+      card.innerHTML = `
+        <div><span>Tipo</span><strong>Adicional no programada</strong></div>
+        <div><span>Planificación</span><strong>No afecta metas</strong></div>
+        <div><span>Validación</span><strong>Regional y nacional</strong></div>
+      `;
+      $("activity-advance").removeAttribute("max");
+      $("activity-advance").disabled = false;
+      if (!$("activity-advance").value) $("activity-advance").value = 1;
+    } else if (quarterly) {
       const quarterCards = [1, 2, 3, 4].map((number) => {
         const fulfilled = numberValue(option[`cumplimiento_t${number}`]) > 0;
         const reviewing = numberValue(option[`en_revision_t${number}`]) > 0;
@@ -4615,18 +4620,12 @@ function setupActivityForm(editingRow) {
         <div><span>En revisión</span><strong>${formatNumber(option.avance_en_revision)}</strong></div>
         <div><span>Disponible</span><strong>${formatNumber(option.disponible_registro)}</strong></div>
       `;
-      if (isAdditionalRecord()) {
-        $("activity-advance").removeAttribute("max");
-        $("activity-advance").disabled = false;
-        card.innerHTML += `<div><span>Tipo</span><strong>Adicional no programada</strong></div>`;
+      $("activity-advance").max = option.disponible_registro;
+      if (option.disponible_registro <= 0 && !state.editingObjectId) {
+        $("activity-advance").value = "";
+        $("activity-advance").disabled = true;
       } else {
-        $("activity-advance").max = option.disponible_registro;
-        if (option.disponible_registro <= 0 && !state.editingObjectId) {
-          $("activity-advance").value = "";
-          $("activity-advance").disabled = true;
-        } else {
-          $("activity-advance").disabled = false;
-        }
+        $("activity-advance").disabled = false;
       }
     }
 
@@ -4652,10 +4651,11 @@ function setupActivityForm(editingRow) {
     }
   }
 
-
   recordTypeSelect?.addEventListener("change", () => {
     updateActivities();
+    updateProgressCard();
   });
+
   programSelect.addEventListener(
     "change",
     updateActivities
@@ -5340,14 +5340,14 @@ function fillActivityForm(row) {
     "";
 
   if ($("activity-record-type")) {
-    $("activity-record-type").value = String(row.observaciones || "").includes("[ADICIONAL_NO_PROGRAMADA]")
+    $("activity-record-type").value = isAdditionalActivityRow(row)
       ? "ADICIONAL_NO_PROGRAMADA"
       : "PLANIFICADA";
   }
 
   setSelectValue(
     $("activity-follow-up-type"),
-    row.tipo_seguimiento || ""
+    getStoredFollowUpType(row.tipo_seguimiento || "")
   );
 
   $("activity-follow-up-number").value =
@@ -5415,18 +5415,17 @@ async function submitActivity(event) {
       );
 
     const isAdditional = $("activity-record-type")?.value === "ADICIONAL_NO_PROGRAMADA";
+    const isQuarterlyVifa = Boolean(selectedOption?.es_control_trimestral) && !isAdditional;
 
-    const isQuarterlyVifa = Boolean(selectedOption?.es_control_trimestral);
-
-    if (!isQuarterlyVifa && quantity <= 0) {
+    if (!isAdditional && !isQuarterlyVifa && quantity <= 0) {
       errors.push("El avance realizado debe ser mayor a cero.");
     }
 
     if (
       selectedOption &&
+      !isAdditional &&
       !isQuarterlyVifa &&
       !state.editingObjectId &&
-      !isAdditional &&
       quantity > selectedOption.disponible_registro
     ) {
       errors.push(
@@ -5489,68 +5488,26 @@ async function submitActivity(event) {
         $("activity-indigenous").value
       );
 
-
-    if (
-      totalAges !==
-      participants
-    ) {
-      errors.push(
-        `Los rangos de edad suman ${totalAges}, pero hombres y mujeres suman ${participants}.`
-      );
+    const hasParticipantData = participants > 0 || totalAges > 0 || disability > 0 || indigenous > 0;
+    if (hasParticipantData && totalAges !== participants) {
+      errors.push(`Los rangos de edad suman ${totalAges}, pero hombres y mujeres suman ${participants}.`);
+    }
+    if (disability > participants && participants > 0) {
+      errors.push("Las personas con discapacidad no pueden superar el total de participantes.");
+    }
+    if (indigenous > participants && participants > 0) {
+      errors.push("Las personas indígenas participantes no pueden superar el total de participantes.");
     }
 
-    if (
-      disability >
-      participants
-    ) {
-      errors.push(
-        "Las personas con discapacidad no pueden superar el total de participantes."
-      );
-    }
-
-    if (
-      indigenous >
-      participants
-    ) {
-      errors.push(
-        "Las personas indígenas participantes no pueden superar el total de participantes."
-      );
-    }
-
-    const province =
-      $("activity-province").value;
-
-    const canton =
-      $("activity-canton").value;
-
-    const district =
-      $("activity-district").value;
-
-
-
-
-    const placeType =
-      $("activity-place-type").value;
-
-    const otherPlace =
-      $("activity-other-place").value.trim();
-
-
-
-
-    const schoolFieldEnabled =
-      !$("activity-school")?.disabled;
-
-
-    const institutions =
-      getSelectedInstitutions();
-
-    const otherInstitution =
-      getOtherInstitutionsText();
-
+    const province = $("activity-province").value;
+    const canton = $("activity-canton").value;
+    const district = $("activity-district").value;
+    const placeType = $("activity-place-type").value;
+    const otherPlace = $("activity-other-place").value.trim();
+    const institutions = getSelectedInstitutions();
+    const otherInstitution = getOtherInstitutionsText();
     const followUpType = $("activity-follow-up-type").value;
     const followUpNumber = $("activity-follow-up-number").value.trim();
-
 
     const isVifa = isVifaOption(selectedOption);
     const vifaFormName = $("activity-vifa-form-name").value.trim();
@@ -5558,9 +5515,9 @@ async function submitActivity(event) {
     const vifaFormNumber = $("activity-vifa-form-number").value.trim();
     const vifaQuarter = $("activity-vifa-quarter").value;
 
-
-
-
+    if (isVifa && isQuarterlyVifa && !vifaQuarter) {
+      errors.push("Debe seleccionar el trimestre de ejecución VIF.");
+    }
 
     if (errors.length) {
       showActivityFormErrors(errors);
@@ -5576,16 +5533,15 @@ async function submitActivity(event) {
       actividad:
         $("activity-name").value,
 
-      fecha_actividad:
-        $("activity-date").value
-          ? new Date(`${$("activity-date").value}T12:00:00`).getTime()
-          : null,
+      fecha_actividad: $("activity-date").value
+        ? new Date(`${$("activity-date").value}T12:00:00`).getTime()
+        : null,
 
       hora_actividad:
         $("activity-time").value,
 
       avance_realizado:
-        isQuarterlyVifa ? 1 : quantity,
+        isQuarterlyVifa ? 1 : (isAdditional ? Math.max(quantity, 1) : quantity),
 
       responsable:
         $("activity-responsible")
@@ -5651,8 +5607,9 @@ async function submitActivity(event) {
       otras_instituciones:
         otherInstitution,
 
-      tipo_seguimiento:
-        followUpType,
+      tipo_seguimiento: isAdditional
+        ? `ADICIONAL_NO_PROGRAMADA|${followUpType || ""}`
+        : followUpType,
 
       numero_consecutivo:
         followUpNumber,
@@ -5691,24 +5648,22 @@ async function submitActivity(event) {
         isQuarterlyVifa ? vifaQuarter : "",
 
       formulario_vifa:
-        isVifa ? vifaFormName : "",
+        (isVifa || isAdditional) ? vifaFormName : "",
 
       fecha_formulario_vifa:
-        isVifa && vifaFormDate ? new Date(`${vifaFormDate}T12:00:00`).getTime() : null,
+        (isVifa || isAdditional) && vifaFormDate ? new Date(`${vifaFormDate}T12:00:00`).getTime() : null,
 
       numero_formulario_vifa:
-        isVifa ? vifaFormNumber : "",
+        (isVifa || isAdditional) ? vifaFormNumber : "",
 
       observaciones:
         $("activity-observations")
           .value
           .trim(),
 
-      latitud:
-        state.selectedPoint.latitude,
+      latitud: state.selectedPoint?.latitude ?? null,
 
-      longitud:
-        state.selectedPoint.longitude
+      longitud: state.selectedPoint?.longitude ?? null
     };
 
     if (state.editingObjectId) {
@@ -5723,17 +5678,13 @@ async function submitActivity(event) {
     } else {
       await api.createActivity(
         attributes,
-        {
-          x:
-            state.selectedPoint.longitude,
-
-          y:
-            state.selectedPoint.latitude,
-
-          spatialReference: {
-            wkid: 4326
-          }
-        }
+        state.selectedPoint
+          ? {
+              x: state.selectedPoint.longitude,
+              y: state.selectedPoint.latitude,
+              spatialReference: { wkid: 4326 }
+            }
+          : null
       );
 
       showToast(
@@ -9614,98 +9565,92 @@ function setSelectValue(
 ========================================================= */
 function renderReportsModule() {
   const coordinator = isNationalCoordinatorRole();
-  const regional = isRegionalRole() && !isNationalViewerRole();
-  const assignedProgramRaw =
-    state.user?.program ||
-    state.user?.programa ||
-    state.user?.assignedProgram ||
-    "";
+  const regional = isRegionalRole() && !coordinator && !isNationalViewerRole();
+  const assignedProgramRaw = state.user?.program || state.user?.programa || state.user?.assignedProgram || "";
   const assignedProgram = normalize(assignedProgramRaw) === "VIF" ? "VIF" : String(assignedProgramRaw || "").trim();
+  const userRegion = String(state.user?.region || "").trim();
 
+  const scopedRows = getRows();
   const programSources = [
-    ...getRows().map((row) => row.programa),
+    ...scopedRows.map((row) => row.programa),
     ...(state.activityOptions || []).map((item) => item.programa)
   ];
   const programs = [...new Set(programSources.map((value) => normalize(value)).filter(Boolean))]
     .map((program) => program === "VIFA" ? "VIF" : program)
     .sort((a, b) => a.localeCompare(b, "es"));
+  const regions = [...new Set(scopedRows.map(r => String(r.direccion_regional || "").trim()).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,"es"));
 
-  const regions = [...new Set(getRows().map(r => String(r.direccion_regional || "").trim()).filter(Boolean))]
-    .sort((a,b)=>a.localeCompare(b,"es"));
-  const delegations = [...new Set(getRows().map(r => String(r.delegacion || "").trim()).filter(Boolean))]
-    .sort((a,b)=>a.localeCompare(b,"es"));
+  const delegationsForRegion = (region) => [...new Set(scopedRows
+    .filter((row) => !region || sameRegion(row.direccion_regional, region))
+    .map((row) => String(row.delegacion || "").trim())
+    .filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
 
   const programField = coordinator
-    ? `<div class="report-readonly-field">
-         <span>Programa asignado</span>
-         <strong>${escapeHtml(assignedProgram || "No configurado")}</strong>
-         <small>El Coordinador Nacional solo puede generar informes de su programa.</small>
-         <input id="report-program" type="hidden" value="${escapeHtml(assignedProgram)}">
-       </div>`
-    : `<label>Programa
-         <select id="report-program">
-           <option value="">Todos los programas</option>
-           ${programs.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}
-         </select>
-       </label>`;
+    ? `<div class="report-readonly-field"><span>Programa asignado</span><strong>${escapeHtml(assignedProgram || "No configurado")}</strong><small>El Coordinador Nacional solo puede generar informes de su programa.</small><input id="report-program" type="hidden" value="${escapeHtml(assignedProgram)}"></div>`
+    : `<label>Programa<select id="report-program"><option value="">Todos los programas</option>${programs.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>`;
 
+  const regionField = regional
+    ? `<div class="report-readonly-field"><span>Dirección Regional</span><strong>${escapeHtml(userRegion || "Región no configurada")}</strong><small>El informe se limita a las delegaciones de esta Dirección Regional.</small><input id="report-region" type="hidden" value="${escapeHtml(userRegion)}"></div>`
+    : `<label>Región<select id="report-region"><option value="">Todas las regiones</option>${regions.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>`;
+
+  const initialDelegations = delegationsForRegion(regional ? userRegion : "");
   $("coming-page").innerHTML = `
     <article class="panel-card report-panel">
-      <div class="report-hero">
-        <div>
-          <span class="panel-kicker">Reporte institucional</span>
-          <h2>Generar informe PDF</h2>
-          <p>${coordinator
-            ? `El informe está limitado al programa <strong>${escapeHtml(assignedProgram || "asignado")}</strong>.`
-            : regional
-              ? "La Dirección Regional puede generar informes de todos los programas y delegaciones de su región."
-              : "El Visor Nacional puede generar un informe nacional completo o aplicar filtros."}</p>
-        </div>
-        <div class="report-hero-icon">📊</div>
-      </div>
+      <div class="report-hero"><div><span class="panel-kicker">Reporte institucional</span><h2>Generar informe PDF</h2><p>${coordinator
+        ? `El informe está limitado al programa <strong>${escapeHtml(assignedProgram || "asignado")}</strong>.`
+        : regional
+          ? "Puede generar informes de todos los programas de las delegaciones que pertenecen a su Dirección Regional."
+          : "El Visor Nacional puede generar un informe nacional completo o aplicar filtros."}</p></div><div class="report-hero-icon">📊</div></div>
       <div class="report-filter-grid">
         ${programField}
-        <label>Región<select id="report-region"><option value="">Todas las regiones</option>${regions.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>
-        <label>Delegación<select id="report-delegation"><option value="">Todas las delegaciones</option>${delegations.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>
-        <label>Trimestre<select id="report-quarter"><option value="">Todos</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></label>
-        <label>Estado<select id="report-status"><option value="">Todos los estados</option><option value="BORRADOR">Borrador</option><option value="PENDIENTE_REGIONAL">Pendiente regional</option><option value="DEVUELTO_REGIONAL">Devuelto regional</option><option value="PENDIENTE_NACIONAL">Pendiente nacional</option><option value="VALIDADO_NACIONAL">Validado nacional</option><option value="NO_VALIDADO_NACIONAL">No validado nacional</option></select></label>
+        ${regionField}
+        <label>Delegación<select id="report-delegation"><option value="">Todas las delegaciones</option>${initialDelegations.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>
+        <label>Actividad<select id="report-activity"><option value="">Todas las actividades</option></select></label>
+        <label>Cumplimiento<select id="report-compliance"><option value="">Completa, con avance e incompleta</option><option value="COMPLETA">Completa</option><option value="CON_AVANCE">Con avance</option><option value="INCOMPLETA">Incompleta</option><option value="SIN_META">Sin meta programada</option></select></label>
+        <label>Revisión<select id="report-review"><option value="">Revisadas y no revisadas</option><option value="REVISADA">Revisadas</option><option value="NO_REVISADA">No revisadas</option></select></label>
+        <label>Trimestre<select id="report-quarter"><option value="">Trimestre actual para VIF</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></label>
+        <label>Estado del flujo<select id="report-status"><option value="">Todos los estados</option><option value="BORRADOR">Borrador</option><option value="PENDIENTE_REGIONAL">Pendiente regional</option><option value="DEVUELTO_REGIONAL">Devuelto regional</option><option value="PENDIENTE_NACIONAL">Pendiente nacional</option><option value="VALIDADO_NACIONAL">Validado nacional</option><option value="NO_VALIDADO_NACIONAL">No validado nacional</option></select></label>
         <label>Fecha inicial<input id="report-from" type="date"></label>
         <label>Fecha final<input id="report-to" type="date"></label>
       </div>
-      <div class="report-note"><strong>Contenido:</strong> portada, resumen ejecutivo, indicadores, VIF por trimestre, distribución territorial, estados de validación y detalle de actividades.</div>
+      <div class="report-note"><strong>Contenido:</strong> portada, resumen ejecutivo, indicadores, VIF por trimestre, actividades adicionales no programadas, distribución territorial, estados de validación y detalle.</div>
       <div class="form-actions"><button id="download-report-pdf" class="btn btn-primary">📄 Descargar informe profesional</button></div>
     </article>`;
 
-  const reportRegion = $("report-region");
-  const reportDelegation = $("report-delegation");
-  const userRegion = state.user?.region || state.user?.direccion_regional || "";
-
-  function refreshReportDelegations() {
-    const selectedRegion = reportRegion?.value || "";
-    const scoped = getRows().filter((row) => !selectedRegion || normalize(row.direccion_regional) === normalize(selectedRegion));
-    const values = [...new Set(scoped.map((row) => String(row.delegacion || "").trim()).filter(Boolean))]
-      .sort((a,b)=>a.localeCompare(b,"es"));
-    if (reportDelegation) {
-      reportDelegation.innerHTML = `<option value="">Todas las delegaciones</option>${values.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}`;
-    }
-  }
-
-  if (regional && userRegion && reportRegion) {
-    setSelectValue(reportRegion, userRegion);
-    reportRegion.disabled = true;
-  }
-  refreshReportDelegations();
-  reportRegion?.addEventListener("change", refreshReportDelegations);
+  const refreshDelegations = () => {
+    const region = regional ? userRegion : $("report-region")?.value;
+    const values = delegationsForRegion(region);
+    const select = $("report-delegation");
+    if (select) select.innerHTML = `<option value="">Todas las delegaciones</option>${values.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}`;
+  };
+  const refreshActivities = () => {
+    const program = $("report-program")?.value;
+    const region = regional ? userRegion : $("report-region")?.value;
+    const delegation = $("report-delegation")?.value;
+    const values = [...new Set(scopedRows.filter((row) =>
+      (!program || normalize(row.programa) === normalize(program)) &&
+      (!region || sameRegion(row.direccion_regional, region)) &&
+      (!delegation || sameDelegation(row.delegacion, delegation))
+    ).map((row) => String(row.actividad || "").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+    const select = $("report-activity");
+    if (select) select.innerHTML = `<option value="">Todas las actividades</option>${values.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}`;
+  };
+  $("report-region")?.addEventListener("change", () => { refreshDelegations(); refreshActivities(); });
+  $("report-delegation")?.addEventListener("change", refreshActivities);
+  $("report-program")?.addEventListener("change", refreshActivities);
+  refreshActivities();
 
   $("download-report-pdf")?.addEventListener("click", async () => {
     try {
-      if (coordinator && !assignedProgram) {
-        throw new Error("El usuario coordinador no tiene un programa asignado. Revise el campo programa en PUMI_USUARIOS y vuelva a iniciar sesión.");
-      }
+      if (coordinator && !assignedProgram) throw new Error("El usuario coordinador no tiene un programa asignado.");
       const params = {
         programa: coordinator ? assignedProgram : $("report-program")?.value,
-        region: $("report-region")?.value,
+        region: regional ? userRegion : $("report-region")?.value,
         delegacion: $("report-delegation")?.value,
+        actividad: $("report-activity")?.value,
+        cumplimiento: $("report-compliance")?.value,
+        revision: $("report-review")?.value,
         trimestre: $("report-quarter")?.value,
         estado: $("report-status")?.value,
         desde: $("report-from")?.value,
@@ -9713,9 +9658,7 @@ function renderReportsModule() {
       };
       await api.downloadPdfReport(params);
       showToast("Informe PDF generado correctamente.");
-    } catch (error) {
-      showToast(error.message || "No fue posible generar el informe.", true);
-    }
+    } catch (error) { showToast(error.message || "No fue posible generar el informe.", true); }
   });
 }
 
