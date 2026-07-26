@@ -146,7 +146,6 @@ const state = {
   dashboardDelegationFilter: "",
   dashboardActivityFilter: "",
   nationalViewerFilters: {
-    activityType: "PLANIFICADA",
     region: "",
     delegation: "",
     program: "",
@@ -1119,27 +1118,22 @@ function isNationalViewerRole() {
   );
 }
 
-function shouldShowVifForCurrentRole() {
-  if (!isNationalCoordinatorRole()) {
-    return true;
-  }
-
+function getAssignedProgramNormalized() {
   return normalize(
     state.user?.program ||
     state.user?.programa ||
     state.user?.assignedProgram ||
     ""
-  ) === "VIF";
-}
-
-function getNationalViewerActivityType() {
-  return normalize(
-    state.nationalViewerFilters?.activityType || "PLANIFICADA"
   );
 }
 
-function isNationalViewerAdditionalMode() {
-  return getNationalViewerActivityType() === "ADICIONAL_NO_PROGRAMADA";
+function isVifNationalCoordinator() {
+  const program = getAssignedProgramNormalized();
+
+  return (
+    isNationalCoordinatorRole() &&
+    (program === "VIF" || program === "VIFA")
+  );
 }
 
 function workflowLabel(row) {
@@ -1218,7 +1212,56 @@ function renderDashboard() {
     return;
   }
 
+  if (isVifNationalCoordinator()) {
+    renderVifCoordinatorDashboard();
+    return;
+  }
+
   renderConsolidatedDashboard();
+}
+
+function renderVifCoordinatorDashboard() {
+  toggleBreakdownPanel(true);
+
+  const quarter = getCurrentVifaQuarter();
+  const summary = buildVifaQuarterSummary().find(
+    (item) => item.trimestre === quarter
+  ) || {
+    programadas: 0,
+    cumplidas: 0,
+    en_proceso: 0,
+    pendientes: 0,
+    porcentaje: 0
+  };
+
+  renderKpiCards([
+    [`VIF ${quarter}`, `${numberValue(summary.porcentaje).toFixed(1)}%`],
+    ["Actividades programadas", numberValue(summary.programadas)],
+    ["Cumplidas", numberValue(summary.cumplidas)],
+    ["Con avance", numberValue(summary.en_proceso)],
+    ["Pendientes", numberValue(summary.pendientes)]
+  ]);
+
+  const programHtml = renderVifaProgramSummaryCard();
+  $("program-summary").innerHTML = programHtml || `
+    <div class="module-empty">
+      No hay actividades VIF programadas para ${escapeHtml(quarter)}.
+    </div>
+  `;
+
+  const breakdownHtml = renderVifaQuarterBreakdown();
+  const activityContainer = $("activity-summary");
+  if (activityContainer) {
+    activityContainer.innerHTML = breakdownHtml || `
+      <div class="module-empty">
+        No hay planificación VIF disponible para ${escapeHtml(quarter)}.
+      </div>
+    `;
+  }
+
+  renderStatusSummaryFromLocal();
+  renderMap(getVifaValidatedRows());
+  renderDelegationOverview([]);
 }
 
 function renderNationalViewerDashboard() {
@@ -1917,14 +1960,6 @@ function renderNationalViewerControls() {
 
     <div class="national-viewer-filter-grid">
       <label>
-        Tipo de actividad
-        <select id="national-filter-activity-type">
-          <option value="PLANIFICADA">Planificadas</option>
-          <option value="ADICIONAL_NO_PROGRAMADA">Adicionales no programadas</option>
-        </select>
-      </label>
-
-      <label>
         Dirección Regional
         <select id="national-filter-region"></select>
       </label>
@@ -1944,7 +1979,7 @@ function renderNationalViewerControls() {
         <select id="national-filter-activity"></select>
       </label>
 
-      <label id="national-filter-compliance-wrap">
+      <label>
         Cumplimiento
         <select id="national-filter-compliance">
           <option value="">Todos</option>
@@ -1960,16 +1995,6 @@ function renderNationalViewerControls() {
     $("national-filter-region"),
     regions,
     true
-  );
-
-  setSelectValue(
-    $("national-filter-activity-type"),
-    state.nationalViewerFilters.activityType || "PLANIFICADA"
-  );
-
-  $("national-filter-compliance-wrap")?.classList.toggle(
-    "hidden",
-    isNationalViewerAdditionalMode()
   );
 
   refreshNationalViewerDependentFilters();
@@ -2001,7 +2026,6 @@ function renderNationalViewerControls() {
   }
 
   [
-    "national-filter-activity-type",
     "national-filter-region",
     "national-filter-delegation",
     "national-filter-program",
@@ -2012,20 +2036,6 @@ function renderNationalViewerControls() {
       "change",
       () => {
         captureNationalViewerFilters();
-
-        if (
-          id ===
-          "national-filter-activity-type"
-        ) {
-          state.nationalViewerFilters.region = "";
-          state.nationalViewerFilters.delegation = "";
-          state.nationalViewerFilters.program = "";
-          state.nationalViewerFilters.activity = "";
-          state.nationalViewerFilters.compliance = "";
-          renderNationalViewerControls();
-          applyNationalViewerFilters();
-          return;
-        }
 
         if (
           id ===
@@ -2068,7 +2078,6 @@ function renderNationalViewerControls() {
       "click",
       () => {
         state.nationalViewerFilters = {
-          activityType: "PLANIFICADA",
           region: "",
           delegation: "",
           program: "",
@@ -2084,10 +2093,6 @@ function renderNationalViewerControls() {
 
 function captureNationalViewerFilters() {
   state.nationalViewerFilters = {
-    activityType:
-      $("national-filter-activity-type")
-        ?.value || "PLANIFICADA",
-
     region:
       $("national-filter-region")
         ?.value || "",
@@ -2115,11 +2120,7 @@ function refreshNationalViewerDependentFilters() {
     state.nationalViewerFilters;
 
   const rows =
-    getNationalViewerBaseRows().filter((row) =>
-      isNationalViewerAdditionalMode()
-        ? isAdditionalActivityRow(row)
-        : !isAdditionalActivityRow(row)
-    );
+    getNationalViewerBaseRows();
 
   const delegations =
     getNationalDelegationOptions(
@@ -2264,12 +2265,6 @@ function getNationalViewerFilteredFeatures() {
     .filter(
       isNationalViewerVisibleActivityFeature
     )
-    .filter((feature) => {
-      const row = feature.attributes || {};
-      return isNationalViewerAdditionalMode()
-        ? isAdditionalActivityRow(row)
-        : !isAdditionalActivityRow(row);
-    })
     .filter(
     (feature) => {
       const row =
@@ -2355,92 +2350,108 @@ function getComplianceLabel(status) {
 function buildNationalViewerDelegationRows(
   features
 ) {
-  return buildDelegationMapGroups(features)
+  return buildDelegationMapGroups(
+    features
+  )
     .map((group) => {
-      if (isNationalViewerAdditionalMode()) {
-        const validated = group.activities.filter((item) =>
-          isNationalApproved(item)
-        ).length;
-        const inReview = Math.max(group.activities.length - validated, 0);
-        const participants = group.activities.reduce(
-          (total, item) => total + numberValue(item.cantidad_participantes),
-          0
-        );
-        const advance = group.activities.reduce(
-          (total, item) => total + numberValue(item.avance),
+      const meta =
+        group.activities.reduce(
+          (total, item) =>
+            total +
+            numberValue(item.meta),
           0
         );
 
-        return {
-          direccion_regional: group.direccion_regional,
-          delegacion: group.delegacion,
-          actividades: group.activities.length,
-          validadas: validated,
-          en_revision: inReview,
-          participantes: participants,
-          avance: advance
-        };
-      }
+      const advance =
+        group.activities.reduce(
+          (total, item) =>
+            total +
+            numberValue(item.avance),
+          0
+        );
 
-      const meta = group.activities.reduce(
-        (total, item) => total + numberValue(item.meta),
-        0
-      );
-      const advance = group.activities.reduce(
-        (total, item) => total + numberValue(item.avance),
-        0
-      );
-      const pending = Math.max(meta - advance, 0);
-      const percentage = meta > 0 ? advance / meta : 0;
-      const status = getComplianceStatus(meta, advance);
+      const pending =
+        Math.max(
+          meta - advance,
+          0
+        );
+
+      const percentage =
+        meta > 0
+          ? advance / meta
+          : 0;
+
+      const status =
+        getComplianceStatus(
+          meta,
+          advance
+        );
 
       return {
-        direccion_regional: group.direccion_regional,
-        delegacion: group.delegacion,
-        actividades: group.activities.length,
+        direccion_regional:
+          group.direccion_regional,
+
+        delegacion:
+          group.delegacion,
+
+        actividades:
+          group.activities.length,
+
         meta,
-        avance: advance,
-        pendiente: pending,
-        porcentaje: percentage,
-        estado: getComplianceLabel(status),
-        estado_codigo: status
+
+        avance:
+          advance,
+
+        pendiente:
+          pending,
+
+        porcentaje:
+          percentage,
+
+        estado:
+          getComplianceLabel(
+            status
+          ),
+
+        estado_codigo:
+          status
       };
     })
-    .filter((row) =>
-      isNationalViewerAdditionalMode() ||
-      !state.nationalViewerFilters.compliance ||
-      normalize(row.estado_codigo) ===
-        normalize(state.nationalViewerFilters.compliance)
+    .filter(
+      (row) =>
+        !state.nationalViewerFilters
+          .compliance ||
+        normalize(
+          row.estado_codigo
+        ) ===
+          normalize(
+            state.nationalViewerFilters
+              .compliance
+          )
     )
-    .sort((a, b) => {
-      const regionComparison = a.direccion_regional.localeCompare(
-        b.direccion_regional,
-        "es"
-      );
-      return regionComparison !== 0
-        ? regionComparison
-        : a.delegacion.localeCompare(b.delegacion, "es");
-    });
+    .sort(
+      (a, b) => {
+        const regionComparison =
+          a.direccion_regional
+            .localeCompare(
+              b.direccion_regional,
+              "es"
+            );
+
+        if (regionComparison !== 0) {
+          return regionComparison;
+        }
+
+        return a.delegacion
+          .localeCompare(
+            b.delegacion,
+            "es"
+          );
+      }
+    );
 }
 
 function applyNationalViewerFilters() {
-  const mapHeading = $("dashboard-map")
-    ?.closest(".panel-card")
-    ?.querySelector("h3");
-
-  if (mapHeading) {
-    mapHeading.textContent = isNationalViewerAdditionalMode()
-      ? "Mapa nacional de actividades adicionales"
-      : "Mapa nacional de cumplimiento";
-  }
-
-  const tableHeading = $("national-viewer-table-panel")?.querySelector("h3");
-  if (tableHeading) {
-    tableHeading.textContent = isNationalViewerAdditionalMode()
-      ? "Resumen de actividades adicionales por delegación"
-      : "Resumen por delegación";
-  }
-
   const baseFeatures =
     getNationalViewerFilteredFeatures();
 
@@ -2642,59 +2653,77 @@ function renderNationalViewerKpis(
   delegationRows,
   visibleFeatures
 ) {
-  const territory = getDelegationCatalogTerritory();
-  const programs = new Set(
-    visibleFeatures
-      .map((feature) => normalize(feature.attributes?.programa))
-      .filter(Boolean)
-  ).size;
-  const activities = new Set(
-    visibleFeatures
-      .map((feature) => `${normalize(feature.attributes?.programa)}|||${normalize(feature.attributes?.actividad)}`)
-      .filter(Boolean)
-  ).size;
+  const meta =
+    sumBy(
+      delegationRows,
+      "meta"
+    );
 
-  if (isNationalViewerAdditionalMode()) {
-    const rows = visibleFeatures.map((feature) => feature.attributes || {});
-    const validated = rows.filter(isNationalApproved).length;
-    const inReview = Math.max(rows.length - validated, 0);
-    const participants = rows.reduce(
-      (total, row) => total + numberValue(row.cantidad_participantes),
+  const advance =
+    sumBy(
+      delegationRows,
+      "avance"
+    );
+
+  const pending =
+    Math.max(
+      meta - advance,
       0
     );
 
-    const additionalRegions = new Set(
-      rows.map((row) => normalize(getActivityRegion(row))).filter(Boolean)
-    ).size;
-    const additionalDelegations = new Set(
-      rows.map((row) => getDelegationCanonicalKey(row.delegacion)).filter(Boolean)
+  const percentage =
+    meta > 0
+      ? (advance / meta) * 100
+      : 0;
+
+  const territory =
+    getDelegationCatalogTerritory();
+
+  const programs =
+    new Set(
+      visibleFeatures
+        .map(
+          (feature) =>
+            normalize(
+              feature.attributes
+                ?.programa
+            )
+        )
+        .filter(Boolean)
     ).size;
 
-    renderKpiCards([
-      ["Actividades adicionales", rows.length],
-      ["Validadas", validated],
-      ["En revisión", inReview],
-      ["Participantes", participants],
-      ["Regiones", additionalRegions],
-      ["Delegaciones", additionalDelegations],
-      ["Programas", programs],
-      ["Actividades", activities]
-    ]);
-    return;
-  }
-
-  const meta = sumBy(delegationRows, "meta");
-  const advance = sumBy(delegationRows, "avance");
-  const pending = Math.max(meta - advance, 0);
-  const percentage = meta > 0 ? (advance / meta) * 100 : 0;
+  const activities =
+    new Set(
+      visibleFeatures
+        .map(
+          (feature) =>
+            `${normalize(
+              feature.attributes
+                ?.programa
+            )}|||${normalize(
+              feature.attributes
+                ?.actividad
+            )}`
+        )
+        .filter(Boolean)
+    ).size;
 
   renderKpiCards([
     ["Meta nacional", meta],
     ["Avance", advance],
     ["Pendiente", pending],
-    ["% cumplimiento", `${percentage.toFixed(1)}%`],
-    ["Regiones", territory.regions],
-    ["Delegaciones", territory.delegations],
+    [
+      "% cumplimiento",
+      `${percentage.toFixed(1)}%`
+    ],
+    [
+      "Regiones",
+      territory.regions
+    ],
+    [
+      "Delegaciones",
+      territory.delegations
+    ],
     ["Programas", programs],
     ["Actividades", activities]
   ]);
@@ -2703,88 +2732,117 @@ function renderNationalViewerKpis(
 function renderNationalViewerTable(rows) {
   getNationalViewerTablePanel();
 
-  const container = $("national-viewer-table");
-  if (!container) return;
+  const container =
+    $("national-viewer-table");
 
-  if (!rows.length) {
-    container.innerHTML = `
-      <div class="module-empty">
-        No hay información para los filtros seleccionados.
-      </div>
-    `;
+  if (!container) {
     return;
   }
 
-  if (isNationalViewerAdditionalMode()) {
-    container.innerHTML = `
-      <div class="table-scroll">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Dirección Regional</th>
-              <th>Delegación</th>
-              <th>Registros adicionales</th>
-              <th>Avance registrado</th>
-              <th>Validadas</th>
-              <th>En revisión</th>
-              <th>Participantes</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map((row) => `
-              <tr>
-                <td>${escapeHtml(row.direccion_regional)}</td>
-                <td><strong>${escapeHtml(row.delegacion)}</strong></td>
-                <td>${formatNumber(row.actividades)}</td>
-                <td>${formatNumber(row.avance)}</td>
-                <td>${formatNumber(row.validadas)}</td>
-                <td>${formatNumber(row.en_revision)}</td>
-                <td>${formatNumber(row.participantes)}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    `;
-    return;
-  }
+  container.innerHTML =
+    rows.length
+      ? `
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>
+                    Dirección Regional
+                  </th>
 
-  container.innerHTML = `
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Dirección Regional</th>
-            <th>Delegación</th>
-            <th>Actividades</th>
-            <th>Meta</th>
-            <th>Avance</th>
-            <th>Pendiente</th>
-            <th>%</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map((row) => `
-            <tr>
-              <td>${escapeHtml(row.direccion_regional)}</td>
-              <td><strong>${escapeHtml(row.delegacion)}</strong></td>
-              <td>${formatNumber(row.actividades)}</td>
-              <td>${formatNumber(row.meta)}</td>
-              <td>${formatNumber(row.avance)}</td>
-              <td>${formatNumber(row.pendiente)}</td>
-              <td><strong>${(numberValue(row.porcentaje) * 100).toFixed(1)}%</strong></td>
-              <td>
-                <span class="national-compliance-badge national-compliance-${normalize(row.estado_codigo).toLowerCase().replace(/\s+/g, "-")}">
-                  ${escapeHtml(row.estado)}
-                </span>
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
+                  <th>
+                    Delegación
+                  </th>
+
+                  <th>
+                    Actividades
+                  </th>
+
+                  <th>Meta</th>
+                  <th>Avance</th>
+                  <th>Pendiente</th>
+                  <th>%</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                ${rows
+                  .map(
+                    (row) => `
+                      <tr>
+                        <td>
+                          ${escapeHtml(
+                            row.direccion_regional
+                          )}
+                        </td>
+
+                        <td>
+                          <strong>
+                            ${escapeHtml(
+                              row.delegacion
+                            )}
+                          </strong>
+                        </td>
+
+                        <td>
+                          ${formatNumber(
+                            row.actividades
+                          )}
+                        </td>
+
+                        <td>
+                          ${formatNumber(
+                            row.meta
+                          )}
+                        </td>
+
+                        <td>
+                          ${formatNumber(
+                            row.avance
+                          )}
+                        </td>
+
+                        <td>
+                          ${formatNumber(
+                            row.pendiente
+                          )}
+                        </td>
+
+                        <td>
+                          <strong>
+                            ${(
+                              numberValue(
+                                row.porcentaje
+                              ) * 100
+                            ).toFixed(1)}%
+                          </strong>
+                        </td>
+
+                        <td>
+                          <span class="national-compliance-badge national-compliance-${normalize(
+                            row.estado_codigo
+                          )
+                            .toLowerCase()
+                            .replace(/\s+/g, "-")}">
+                            ${escapeHtml(
+                              row.estado
+                            )}
+                          </span>
+                        </td>
+                      </tr>
+                    `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        `
+      : `
+          <div class="module-empty">
+            No hay información para los filtros seleccionados.
+          </div>
+        `;
 }
 
 function renderDelegationDashboard() {
@@ -2863,9 +2921,7 @@ function toggleBreakdownPanel(visible) {
 
 function renderKpisFromDashboard(kpis) {
   const quarter = getCurrentVifaQuarter();
-  const vifSummary = shouldShowVifForCurrentRole()
-    ? buildVifaQuarterSummary().find((item) => item.trimestre === quarter)
-    : null;
+  const vifSummary = buildVifaQuarterSummary().find((item) => item.trimestre === quarter);
   const cards = [
     ["Registros", numberValue(kpis.registros)],
     [`Meta anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.meta)],
@@ -3370,10 +3426,6 @@ function buildVifaQuarterSummary() {
 }
 
 function renderVifaProgramSummaryCard() {
-  if (!shouldShowVifForCurrentRole()) {
-    return "";
-  }
-
   const currentQuarter = getCurrentVifaQuarter();
   const current = buildVifaQuarterSummary().find(
     (item) => item.trimestre === currentQuarter
