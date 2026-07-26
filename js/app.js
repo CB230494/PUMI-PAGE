@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260725-pdf-filename2";
+import { ApiService } from "../services/api-service.js?v=20260726-vif-tracking1";
 
 const api = new ApiService();
 
@@ -152,7 +152,8 @@ const state = {
   },
   selectedInstitutions: [],
   vifaHistorico: [],
-  centrosEducativos: []
+  centrosEducativos: [],
+  nationalTracking: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -338,6 +339,14 @@ function buildNavigation() {
     });
   }
 
+  if (isNationalViewerRole()) {
+    items.push({
+      id: "seguimiento-nacional",
+      label: "Seguimiento nacional",
+      icon: "🧭"
+    });
+  }
+
   if (isNationalCoordinatorRole() || isNationalViewerRole()) {
     items.push({
       id: "informes",
@@ -429,6 +438,11 @@ function navigate(pageId, title) {
     return;
   }
 
+  if (pageId === "seguimiento-nacional") {
+    renderNationalTrackingModule();
+    return;
+  }
+
   if (pageId === "informes") {
     renderReportsModule();
     return;
@@ -488,12 +502,17 @@ async function loadData() {
       api.getDelegations(),
       api.getActivityOptions(),
       api.getDashboard(),
-      loadStaticJson("./data/vifa-historico.json", { registros: [] }),
+      loadStaticJson("./data/vif-historico.json", { registros: [] }),
       loadStaticJson("./data/centros-educativos.json", { centros: [] })
     ]);
 
     state.activityOptions =
       (activityOptions.options || [])
+        .map((option) => ({
+          ...option,
+          programa: normalize(option.programa) === "VIFA" ? "VIF" : option.programa,
+          codigo_actividad: String(option.codigo_actividad || "").replace(/^VIFA(?=-|$)/i, "VIF")
+        }))
         .filter(isSelectableActivityOption);
 
     state.actividades =
@@ -9656,6 +9675,152 @@ function setSelectValue(
   select.value = "";
 }
 
+
+/* =========================================================
+   SEGUIMIENTO NACIONAL — SOLO VISOR NACIONAL
+========================================================= */
+
+async function renderNationalTrackingModule() {
+  if (!isNationalViewerRole()) {
+    renderComing("Seguimiento nacional");
+    return;
+  }
+
+  $("coming-page").innerHTML = `
+    <section class="tracking-shell">
+      <article class="panel-card tracking-hero">
+        <div>
+          <span class="panel-kicker">VISOR NACIONAL</span>
+          <h2>Seguimiento nacional de movimientos</h2>
+          <p>Consulte el recorrido de las actividades desde la delegación hasta la resolución nacional.</p>
+        </div>
+        <div class="tracking-hero-icon">🧭</div>
+      </article>
+
+      <article class="panel-card tracking-panel">
+        <div class="tracking-filters">
+          <label>Dirección Regional<select id="tracking-region"><option value="">Todas</option></select></label>
+          <label>Delegación<select id="tracking-delegation"><option value="">Todas</option></select></label>
+          <label>Programa<select id="tracking-program"><option value="">Todos</option></select></label>
+          <label>Actividad<select id="tracking-activity"><option value="">Todas</option></select></label>
+          <label>Movimiento<select id="tracking-action">
+            <option value="">Todos</option>
+            <option value="CREACION">Creación</option>
+            <option value="CONFIRMACION_ENVIO">Envío a Región</option>
+            <option value="REVISION_REGIONAL">Revisión regional</option>
+            <option value="VALIDACION_NACIONAL">Resolución nacional</option>
+          </select></label>
+          <label>Desde<input id="tracking-from" type="date"></label>
+          <label>Hasta<input id="tracking-to" type="date"></label>
+        </div>
+        <div class="tracking-actions">
+          <button id="tracking-clear" class="btn btn-secondary">Limpiar filtros</button>
+          <button id="tracking-search" class="btn btn-primary">Consultar movimientos</button>
+        </div>
+      </article>
+
+      <section id="tracking-results"></section>
+    </section>
+  `;
+
+  populateTrackingFilters();
+  $("tracking-search")?.addEventListener("click", loadNationalTracking);
+  $("tracking-clear")?.addEventListener("click", () => {
+    ["tracking-region","tracking-delegation","tracking-program","tracking-activity","tracking-action","tracking-from","tracking-to"].forEach((id) => { if ($(id)) $(id).value = ""; });
+    populateTrackingFilters();
+    loadNationalTracking();
+  });
+  $("tracking-region")?.addEventListener("change", populateTrackingFilters);
+  $("tracking-program")?.addEventListener("change", populateTrackingFilters);
+  await loadNationalTracking();
+}
+
+function populateTrackingFilters() {
+  const rows = getRows();
+  const regionValue = $("tracking-region")?.value || "";
+  const programValue = $("tracking-program")?.value || "";
+  const unique = (values) => [...new Set(values.filter(Boolean))].sort((a,b) => a.localeCompare(b,"es",{sensitivity:"base"}));
+  const setOptions = (id, values, allLabel) => {
+    const select = $(id); if (!select) return;
+    const current = select.value;
+    select.innerHTML = `<option value="">${allLabel}</option>` + values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+    if ([...select.options].some((option) => option.value === current)) select.value = current;
+  };
+  setOptions("tracking-region", unique(rows.map((row) => row.direccion_regional)), "Todas");
+  const regionRows = regionValue ? rows.filter((row) => normalize(row.direccion_regional) === normalize(regionValue)) : rows;
+  setOptions("tracking-delegation", unique(regionRows.map((row) => row.delegacion)), "Todas");
+  setOptions("tracking-program", unique(rows.map((row) => normalize(row.programa) === "VIFA" ? "VIF" : row.programa)), "Todos");
+  const programRows = programValue ? rows.filter((row) => normalize(row.programa) === normalize(programValue) || (normalize(programValue) === "VIF" && normalize(row.programa) === "VIFA")) : rows;
+  setOptions("tracking-activity", unique(programRows.map((row) => row.actividad)), "Todas");
+}
+
+async function loadNationalTracking() {
+  const target = $("tracking-results");
+  if (!target) return;
+  target.innerHTML = `<article class="panel-card empty-state"><p>Cargando movimientos...</p></article>`;
+  try {
+    const result = await api.getNationalTracking({
+      region: $("tracking-region")?.value,
+      delegacion: $("tracking-delegation")?.value,
+      programa: $("tracking-program")?.value,
+      actividad: $("tracking-activity")?.value,
+      accion: $("tracking-action")?.value,
+      desde: $("tracking-from")?.value,
+      hasta: $("tracking-to")?.value,
+      limite: 1000
+    });
+    state.nationalTracking = result;
+    renderNationalTrackingResults(result);
+  } catch (error) {
+    target.innerHTML = `<article class="panel-card empty-state"><h3>No fue posible consultar el seguimiento</h3><p>${escapeHtml(error.message)}</p></article>`;
+  }
+}
+
+function renderNationalTrackingResults(result = {}) {
+  const target = $("tracking-results");
+  if (!target) return;
+  if (result.configured === false) {
+    target.innerHTML = `<article class="panel-card empty-state"><h3>Bitácora no configurada</h3><p>Debe configurarse PUMI_BITACORA_URL en Render para registrar y consultar movimientos.</p></article>`;
+    return;
+  }
+  const movements = result.movements || [];
+  if (!movements.length) {
+    target.innerHTML = `<article class="panel-card empty-state"><h3>Sin movimientos</h3><p>No se encontraron movimientos con los filtros seleccionados.</p></article>`;
+    return;
+  }
+  const counts = movements.reduce((acc,row) => { const key = normalize(row.accion); acc[key]=(acc[key]||0)+1; return acc; },{});
+  target.innerHTML = `
+    <div class="tracking-metrics">
+      <article><span>Total</span><strong>${movements.length}</strong></article>
+      <article><span>Envíos a Región</span><strong>${counts.CONFIRMACION_ENVIO || 0}</strong></article>
+      <article><span>Revisiones regionales</span><strong>${counts.REVISION_REGIONAL || 0}</strong></article>
+      <article><span>Resoluciones nacionales</span><strong>${counts.VALIDACION_NACIONAL || 0}</strong></article>
+    </div>
+    <article class="panel-card tracking-list-card">
+      <div class="tracking-list-head"><h3>Movimientos registrados</h3><span>${movements.length} resultados</span></div>
+      <div class="tracking-list">
+        ${movements.map((row) => `
+          <details class="tracking-item">
+            <summary>
+              <span class="tracking-dot ${normalize(row.accion).toLowerCase()}"></span>
+              <span class="tracking-time">${escapeHtml(formatDateTime(row.fecha))}</span>
+              <span class="tracking-main"><strong>${escapeHtml(row.movimiento || row.accion)}</strong><small>${escapeHtml([row.delegacion,row.direccion_regional,row.programa].filter(Boolean).join(" · "))}</small></span>
+              <span class="tracking-status">${escapeHtml(row.estado_actual || row.destino || "")}</span>
+            </summary>
+            <div class="tracking-detail">
+              <div><b>ID PUMI:</b> ${escapeHtml(row.id_pumi)}</div>
+              <div><b>Actividad:</b> ${escapeHtml(row.actividad || "Sin detalle")}</div>
+              <div><b>Usuario:</b> ${escapeHtml(row.usuario || "No registrado")}</div>
+              <div><b>Destino:</b> ${escapeHtml(row.destino || "Seguimiento")}</div>
+              <div class="tracking-detail-wide"><b>Detalle:</b> ${escapeHtml(row.detalle || "Sin observación")}</div>
+              ${row.observacion_regional ? `<div class="tracking-detail-wide"><b>Observación regional:</b> ${escapeHtml(row.observacion_regional)}</div>` : ""}
+              ${row.observacion_nacional ? `<div class="tracking-detail-wide"><b>Observación nacional:</b> ${escapeHtml(row.observacion_nacional)}</div>` : ""}
+            </div>
+          </details>
+        `).join("")}
+      </div>
+    </article>`;
+}
 
 /* =========================================================
    INFORMES PDF
