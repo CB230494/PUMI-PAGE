@@ -1650,3 +1650,106 @@ button {
 
 /* Seguimiento nacional — exclusivo Visor Nacional */
 .tracking-shell{display:grid;gap:20px}.tracking-hero{display:flex;justify-content:space-between;align-items:center;gap:22px;padding:26px 28px;background:linear-gradient(135deg,#062f6f,#0a4a9d 58%,#1479c9);color:#fff}.tracking-hero h2{margin:5px 0 7px;color:#fff}.tracking-hero p{margin:0;color:rgba(255,255,255,.9)}.tracking-hero .panel-kicker{color:#ffd166}.tracking-hero-icon{display:grid;place-items:center;min-width:72px;height:72px;border-radius:20px;background:rgba(255,255,255,.14);font-size:2rem}.tracking-panel{padding:24px}.tracking-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:15px}.tracking-filters label{display:flex;flex-direction:column;gap:7px;font-weight:750;color:#183153}.tracking-filters select,.tracking-filters input{min-height:44px;padding:10px 12px;border:1px solid #cbd7e6;border-radius:10px;background:#fff}.tracking-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:18px}.tracking-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.tracking-metrics article{padding:18px;border:1px solid #d7e1ee;border-radius:14px;background:#fff;box-shadow:0 10px 25px rgba(15,42,83,.07)}.tracking-metrics span{display:block;color:#64748b;font-size:.86rem}.tracking-metrics strong{display:block;margin-top:5px;color:#063b78;font-size:1.7rem}.tracking-list-card{padding:0;overflow:hidden}.tracking-list-head{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;border-bottom:1px solid #dce5ef}.tracking-list-head h3{margin:0;color:#063b78}.tracking-list-head span{color:#64748b}.tracking-list{display:grid}.tracking-item{border-bottom:1px solid #e2e8f0}.tracking-item:last-child{border-bottom:0}.tracking-item summary{display:grid;grid-template-columns:16px 150px minmax(0,1fr) 150px;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;list-style:none}.tracking-item summary::-webkit-details-marker{display:none}.tracking-item[open] summary{background:#f6f9fd}.tracking-dot{width:11px;height:11px;border-radius:50%;background:#64748b}.tracking-dot.confirmacion_envio{background:#d89b12}.tracking-dot.revision_regional{background:#0b66b2}.tracking-dot.validacion_nacional{background:#198754}.tracking-dot.creacion{background:#7c3aed}.tracking-time{font-size:.86rem;color:#64748b}.tracking-main{display:grid;gap:3px}.tracking-main strong{color:#183153}.tracking-main small{color:#64748b}.tracking-status{justify-self:end;padding:6px 9px;border-radius:999px;background:#edf4ff;color:#174ea6;font-size:.8rem;font-weight:700}.tracking-detail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;padding:16px 58px 20px;background:#f8fafc;color:#334155}.tracking-detail-wide{grid-column:1/-1}@media(max-width:800px){.tracking-metrics{grid-template-columns:repeat(2,1fr)}.tracking-item summary{grid-template-columns:14px 1fr}.tracking-time,.tracking-status{grid-column:2;justify-self:start}.tracking-detail{grid-template-columns:1fr;padding-left:42px}.tracking-detail-wide{grid-column:auto}}@media(max-width:520px){.tracking-metrics{grid-template-columns:1fr}.tracking-actions{flex-direction:column}.tracking-actions .btn{width:100%}}
+
+/* =========================================================
+   AJUSTES REGIONALES: TIPO DE ACTIVIDAD Y ORDEN DE INFORMES
+========================================================= */
+.progress-info-card.progress-info-card-additional {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 760px;
+}
+
+.report-filter-section {
+  margin: 22px 28px 0;
+  padding: 20px;
+  border: 1px solid #dbe5f2;
+  border-radius: 18px;
+  background: #fbfdff;
+}
+
+.report-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.report-section-heading > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #0b3b8f;
+  color: #fff;
+  font-weight: 800;
+}
+
+.report-section-heading strong,
+.report-section-heading small {
+  display: block;
+}
+
+.report-section-heading strong {
+  color: #062d76;
+  font-size: 1rem;
+}
+
+.report-section-heading small {
+  margin-top: 3px;
+  color: #64748b;
+}
+
+.report-filter-section .report-filter-grid {
+  padding: 0;
+  margin: 0;
+}
+
+.report-filter-grid-scope,
+.report-filter-grid-analysis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.report-filter-grid-period {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  max-width: 620px;
+}
+
+.report-actions {
+  justify-content: flex-end;
+  padding: 20px 28px 28px;
+}
+
+.report-actions .btn {
+  min-width: 310px;
+}
+
+@media (max-width: 1050px) {
+  .report-filter-grid-scope,
+  .report-filter-grid-analysis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .progress-info-card.progress-info-card-additional,
+  .report-filter-grid-scope,
+  .report-filter-grid-analysis,
+  .report-filter-grid-period {
+    grid-template-columns: 1fr;
+  }
+
+  .report-filter-section {
+    margin: 16px 14px 0;
+    padding: 16px;
+  }
+
+  .report-actions {
+    padding: 16px 14px 22px;
+  }
+
+  .report-actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
+}
