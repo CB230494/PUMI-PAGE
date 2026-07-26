@@ -344,7 +344,29 @@ export class ApiService {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Informe_PUMI_${new Date().toISOString().slice(0,10)}.pdf`;
+
+    const sanitizeFilePart = (value, fallback = "Nacional") => {
+      const cleaned = String(value || fallback)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .replace(/_+/g, "_");
+      return cleaned.slice(0, 70) || fallback;
+    };
+
+    const headerName = response.headers.get("X-Report-Filename");
+    const date = new Date().toISOString().slice(0, 10);
+    const scope = filters.delegacion
+      ? sanitizeFilePart(filters.delegacion, "Delegacion")
+      : filters.region
+        ? sanitizeFilePart(filters.region, "Region")
+        : filters.programa
+          ? sanitizeFilePart(filters.programa, "Programa")
+          : "Nacional";
+    const program = filters.programa ? `_${sanitizeFilePart(filters.programa, "Programa")}` : "";
+    link.download = headerName || `Informe_PUMI${program}_${scope}_${date}.pdf`;
+
     document.body.appendChild(link);
     link.click();
     link.remove();
