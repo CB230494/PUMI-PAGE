@@ -6252,11 +6252,32 @@ function openActivityDetail(row) {
   );
 }
 
+function isAdditionalActivity(row = {}) {
+  const trackingType = normalize(row.tipo_seguimiento || "");
+  const observations = normalize(row.observaciones || "");
+  return trackingType.startsWith("ADICIONAL_NO_PROGRAMADA") || observations.includes("ADICIONAL_NO_PROGRAMADA");
+}
+
+function activityTypeLabel(row = {}) {
+  return isAdditionalActivity(row)
+    ? "Actividad adicional no programada"
+    : "Actividad planificada";
+}
+
+function cleanActivityObservations(value) {
+  const cleaned = String(value || "")
+    .replace(/\[?ADICIONAL_NO_PROGRAMADA\]?\s*[|:-]?\s*/gi, "")
+    .trim();
+  return cleaned || "";
+}
+
 function renderActivityDataSections(row) {
+  const cleanedObservations = cleanActivityObservations(row.observaciones);
   return `
     ${buildDetailSection(
       "Actividad",
       [
+        ["Tipo de actividad", activityTypeLabel(row)],
         ["Programa", row.programa],
         ["Actividad", row.actividad],
         ["Fecha", formatDate(row.fecha_actividad)],
@@ -6305,7 +6326,7 @@ function renderActivityDataSections(row) {
         ["Fecha formulario VIF", formatDate(row.fecha_formulario_vifa)],
         ["Número formulario VIF", row.numero_formulario_vifa],
         ["Trimestre ejecución VIF", row.trimestre_ejecucion_vifa],
-        ["Observaciones", row.observaciones]
+        ["Observaciones", cleanedObservations]
       ]
     )}
 
@@ -6788,33 +6809,41 @@ async function openReviewDetail(objectId) {
             </div>
           </div>
 
-          <div class="progress-info-card">
-            <div>
-              <span>Meta</span>
-              <strong>${formatNumber(progress.meta)}</strong>
-            </div>
-
-            <div>
-              <span>Avance validado</span>
-              <strong>
-                ${formatNumber(progress.avance_validado)}
-              </strong>
-            </div>
-
-            <div>
-              <span>En revisión</span>
-              <strong>
-                ${formatNumber(progress.avance_en_revision)}
-              </strong>
-            </div>
-
-            <div>
-              <span>Pendiente</span>
-              <strong>
-                ${formatNumber(progress.pendiente_real)}
-              </strong>
-            </div>
-          </div>
+          ${
+            isAdditionalActivity(row)
+              ? `
+                <div class="progress-info-card progress-info-card-additional">
+                  <div>
+                    <span>Avance validado</span>
+                    <strong>${formatNumber(progress.avance_validado)}</strong>
+                  </div>
+                  <div>
+                    <span>En revisión</span>
+                    <strong>${formatNumber(progress.avance_en_revision)}</strong>
+                  </div>
+                </div>
+              `
+              : `
+                <div class="progress-info-card">
+                  <div>
+                    <span>Meta</span>
+                    <strong>${formatNumber(progress.meta)}</strong>
+                  </div>
+                  <div>
+                    <span>Avance validado</span>
+                    <strong>${formatNumber(progress.avance_validado)}</strong>
+                  </div>
+                  <div>
+                    <span>En revisión</span>
+                    <strong>${formatNumber(progress.avance_en_revision)}</strong>
+                  </div>
+                  <div>
+                    <span>Pendiente</span>
+                    <strong>${formatNumber(progress.pendiente_real)}</strong>
+                  </div>
+                </div>
+              `
+          }
 
           ${renderActivityDataSections(row)}
 
@@ -9602,20 +9631,45 @@ function renderReportsModule() {
         : regional
           ? "Puede generar informes de todos los programas de las delegaciones que pertenecen a su Dirección Regional."
           : "El Visor Nacional puede generar un informe nacional completo o aplicar filtros."}</p></div><div class="report-hero-icon">📊</div></div>
-      <div class="report-filter-grid">
-        ${programField}
-        ${regionField}
-        <label>Delegación<select id="report-delegation"><option value="">Todas las delegaciones</option>${initialDelegations.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>
-        <label>Actividad<select id="report-activity"><option value="">Todas las actividades</option></select></label>
-        <label>Cumplimiento<select id="report-compliance"><option value="">Completa, con avance e incompleta</option><option value="COMPLETA">Completa</option><option value="CON_AVANCE">Con avance</option><option value="INCOMPLETA">Incompleta</option><option value="SIN_META">Sin meta programada</option></select></label>
-        <label>Revisión<select id="report-review"><option value="">Revisadas y no revisadas</option><option value="REVISADA">Revisadas</option><option value="NO_REVISADA">No revisadas</option></select></label>
-        <label>Trimestre<select id="report-quarter"><option value="">Trimestre actual para VIF</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></label>
-        <label>Estado del flujo<select id="report-status"><option value="">Todos los estados</option><option value="BORRADOR">Borrador</option><option value="PENDIENTE_REGIONAL">Pendiente regional</option><option value="DEVUELTO_REGIONAL">Devuelto regional</option><option value="PENDIENTE_NACIONAL">Pendiente nacional</option><option value="VALIDADO_NACIONAL">Validado nacional</option><option value="NO_VALIDADO_NACIONAL">No validado nacional</option></select></label>
-        <label>Fecha inicial<input id="report-from" type="date"></label>
-        <label>Fecha final<input id="report-to" type="date"></label>
-      </div>
-      <div class="report-note"><strong>Contenido:</strong> portada, resumen ejecutivo, indicadores, VIF por trimestre, actividades adicionales no programadas, distribución territorial, estados de validación y detalle.</div>
-      <div class="form-actions"><button id="download-report-pdf" class="btn btn-primary">📄 Descargar informe profesional</button></div>
+      <section class="report-filter-section">
+        <div class="report-section-heading">
+          <span>1</span>
+          <div><strong>Alcance del informe</strong><small>Seleccione programa, región, delegación y actividad.</small></div>
+        </div>
+        <div class="report-filter-grid report-filter-grid-scope">
+          ${programField}
+          ${regionField}
+          <label>Delegación<select id="report-delegation"><option value="">Todas las delegaciones</option>${initialDelegations.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}</select></label>
+          <label>Actividad<select id="report-activity"><option value="">Todas las actividades</option></select></label>
+        </div>
+      </section>
+
+      <section class="report-filter-section">
+        <div class="report-section-heading">
+          <span>2</span>
+          <div><strong>Criterios de análisis</strong><small>Defina cumplimiento, revisión, trimestre y estado del flujo.</small></div>
+        </div>
+        <div class="report-filter-grid report-filter-grid-analysis">
+          <label>Cumplimiento<select id="report-compliance"><option value="">Completa, con avance e incompleta</option><option value="COMPLETA">Completa</option><option value="CON_AVANCE">Con avance</option><option value="INCOMPLETA">Incompleta</option><option value="SIN_META">Sin meta programada</option></select></label>
+          <label>Revisión<select id="report-review"><option value="">Revisadas y no revisadas</option><option value="REVISADA">Revisadas</option><option value="NO_REVISADA">No revisadas</option></select></label>
+          <label>Trimestre<select id="report-quarter"><option value="">Trimestre actual para VIF</option><option>T1</option><option>T2</option><option>T3</option><option>T4</option></select></label>
+          <label>Estado del flujo<select id="report-status"><option value="">Todos los estados</option><option value="BORRADOR">Borrador</option><option value="PENDIENTE_REGIONAL">Pendiente regional</option><option value="DEVUELTO_REGIONAL">Devuelto regional</option><option value="PENDIENTE_NACIONAL">Pendiente nacional</option><option value="VALIDADO_NACIONAL">Validado nacional</option><option value="NO_VALIDADO_NACIONAL">No validado nacional</option></select></label>
+        </div>
+      </section>
+
+      <section class="report-filter-section">
+        <div class="report-section-heading">
+          <span>3</span>
+          <div><strong>Periodo</strong><small>Las fechas son opcionales.</small></div>
+        </div>
+        <div class="report-filter-grid report-filter-grid-period">
+          <label>Fecha inicial<input id="report-from" type="date"></label>
+          <label>Fecha final<input id="report-to" type="date"></label>
+        </div>
+      </section>
+
+      <div class="report-note"><strong>El informe incluirá:</strong> portada, resumen ejecutivo, indicadores, VIF por trimestre, actividades adicionales no programadas, distribución territorial, estados de validación y detalle.</div>
+      <div class="form-actions report-actions"><button id="download-report-pdf" class="btn btn-primary">📄 Generar y descargar informe PDF</button></div>
     </article>`;
 
   const refreshDelegations = () => {
