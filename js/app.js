@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260726-regional-extra1";
+import { ApiService } from "../services/api-service.js?v=20260726-vif-integrado-final";
 
 const api = new ApiService();
 
@@ -1221,6 +1221,8 @@ function renderDashboard() {
 }
 
 function renderVifCoordinatorDashboard() {
+  /* VIF conserva su medición trimestral, pero utiliza exactamente la misma
+     estructura visual y territorial de los demás programas. */
   toggleBreakdownPanel(true);
 
   const quarter = getCurrentVifaQuarter();
@@ -1234,6 +1236,10 @@ function renderVifCoordinatorDashboard() {
     porcentaje: 0
   };
 
+  const details = getCurrentVifCoordinatorDetails();
+  const mapFeatures = buildVifCoordinatorMapFeatures(details);
+  const delegationRows = buildVifCoordinatorDelegationRows(details);
+
   renderKpiCards([
     [`VIF ${quarter}`, `${numberValue(summary.porcentaje).toFixed(1)}%`],
     ["Actividades programadas", numberValue(summary.programadas)],
@@ -1242,17 +1248,15 @@ function renderVifCoordinatorDashboard() {
     ["Pendientes", numberValue(summary.pendientes)]
   ]);
 
-  const programHtml = renderVifaProgramSummaryCard();
-  $("program-summary").innerHTML = programHtml || `
+  $("program-summary").innerHTML = renderVifaProgramSummaryCard() || `
     <div class="module-empty">
       No hay actividades VIF programadas para ${escapeHtml(quarter)}.
     </div>
   `;
 
-  const breakdownHtml = renderVifaQuarterBreakdown();
   const activityContainer = $("activity-summary");
   if (activityContainer) {
-    activityContainer.innerHTML = breakdownHtml || `
+    activityContainer.innerHTML = renderVifaQuarterBreakdown() || `
       <div class="module-empty">
         No hay planificación VIF disponible para ${escapeHtml(quarter)}.
       </div>
@@ -1260,8 +1264,78 @@ function renderVifCoordinatorDashboard() {
   }
 
   renderStatusSummaryFromLocal();
-  renderMap(getVifaValidatedRows());
-  renderDelegationOverview([]);
+
+  state.dashboard = {
+    ...(state.dashboard || {}),
+    map_features: mapFeatures,
+    delegations: delegationRows
+  };
+
+  renderDelegationOverview(delegationRows);
+  renderDashboardMapFromFilters();
+}
+
+function getCurrentVifCoordinatorDetails() {
+  const quarter = getCurrentVifaQuarter();
+  return buildVifaQuarterDetails().filter(
+    (row) => row.trimestre === quarter
+  );
+}
+
+function buildVifCoordinatorMapFeatures(details = []) {
+  return details.map((row, index) => ({
+    attributes: {
+      OBJECTID: `VIF-PLAN-${index + 1}`,
+      programa: "VIF",
+      actividad: row.actividad || row.codigo || "Actividad VIF",
+      delegacion: row.delegacion || "Sin delegación",
+      direccion_regional: row.direccion_regional || "Sin región",
+      meta: row.control_trimestral ? 1 : Math.max(numberValue(row.linea_base), 0),
+      avance: row.control_trimestral
+        ? (numberValue(row.avance) > 0 ? 1 : 0)
+        : Math.max(numberValue(row.avance), 0),
+      pendiente: row.control_trimestral
+        ? (numberValue(row.avance) > 0 ? 0 : 1)
+        : Math.max(numberValue(row.linea_base) - numberValue(row.avance), 0),
+      porcentaje_cumplimiento: numberValue(row.porcentaje),
+      estado_registro: "ACTIVO",
+      estado_flujo: numberValue(row.avance) > 0 ? "VALIDADO_NACIONAL" : "PLANIFICADA",
+      estado_nacional: numberValue(row.avance) > 0 ? "VALIDADO_NACIONAL" : "SIN_EJECUCION",
+      archivo_origen: "PLANIFICACION_VIF_LOCAL",
+      trimestre_ejecucion_vifa: row.trimestre,
+      codigo_actividad_vifa: row.codigo,
+      __vif_planning: true
+    },
+    geometry: null
+  }));
+}
+
+function buildVifCoordinatorDelegationRows(details = []) {
+  const grouped = new Map();
+
+  for (const row of details) {
+    const key = getDelegationCanonicalKey(row.delegacion) || normalize(row.delegacion);
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        delegacion: getOfficialDelegationName(row.delegacion || "Sin delegación"),
+        direccion_regional: row.direccion_regional || "Sin región",
+        registros: 0,
+        pendientes_regional: 0,
+        pendientes_nacional: 0,
+        validados: 0
+      });
+    }
+
+    const item = grouped.get(key);
+    item.registros += 1;
+    if (numberValue(row.avance) > 0) {
+      item.validados += 1;
+    }
+  }
+
+  return [...grouped.values()].sort((a, b) =>
+    a.delegacion.localeCompare(b.delegacion, "es")
+  );
 }
 
 function renderNationalViewerDashboard() {
@@ -4035,11 +4109,15 @@ function renderDelegationOverview(delegations) {
 }
 
 function getDashboardActivityNames() {
+  const sourceRows = isVifNationalCoordinator()
+    ? getCurrentVifCoordinatorDetails()
+    : getRows();
+
   return [
     ...new Set(
-      getRows()
+      sourceRows
         .map((row) =>
-          String(row.actividad || "").trim()
+          String(row.actividad || row.codigo || "").trim()
         )
         .filter(Boolean)
         .filter(
@@ -4062,7 +4140,7 @@ function getDashboardMapFeatures() {
     const row =
       feature.attributes || {};
 
-    if (!isVisibleActivityRow(row)) {
+    if (!isVisibleActivityRow(row) && row.__vif_planning !== true) {
       return false;
     }
 
@@ -4098,6 +4176,35 @@ function renderDashboardMapFromFilters() {
 
 async function loadDelegationBreakdown(delegation) {
   try {
+    if (isVifNationalCoordinator()) {
+      const rows = getCurrentVifCoordinatorDetails()
+        .filter((row) =>
+          getDelegationCanonicalKey(row.delegacion) ===
+          getDelegationCanonicalKey(delegation)
+        )
+        .map((row) => ({
+          programa: "VIF",
+          actividad: row.actividad || row.codigo,
+          meta: row.control_trimestral ? 1 : numberValue(row.linea_base),
+          avance: row.control_trimestral
+            ? (numberValue(row.avance) > 0 ? 1 : 0)
+            : numberValue(row.avance),
+          pendiente: row.control_trimestral
+            ? (numberValue(row.avance) > 0 ? 0 : 1)
+            : Math.max(numberValue(row.linea_base) - numberValue(row.avance), 0),
+          porcentaje: numberValue(row.porcentaje)
+        }));
+
+      toggleBreakdownPanel(true);
+      renderVifDelegationBreakdown(rows, delegation);
+
+      $("activity-breakdown-panel")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+      return;
+    }
+
     const dashboard =
       await api.getDashboard(delegation);
 
@@ -4115,6 +4222,46 @@ async function loadDelegationBreakdown(delegation) {
   } catch (error) {
     showToast(error.message, true);
   }
+}
+
+function renderVifDelegationBreakdown(rows = [], delegation = "") {
+  const container = $("activity-summary");
+  if (!container) return;
+
+  container.innerHTML = rows.length
+    ? `
+      <div class="panel-header" style="margin-bottom:12px;">
+        <div>
+          <span class="panel-kicker">VIF ${escapeHtml(getCurrentVifaQuarter())}</span>
+          <h3>${escapeHtml(delegation)}</h3>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Actividad</th>
+              <th>Línea base / control</th>
+              <th>Avance validado</th>
+              <th>Pendiente</th>
+              <th>% cumplimiento</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td><strong>${escapeHtml(row.actividad)}</strong></td>
+                <td>${formatNumber(row.meta)}</td>
+                <td>${formatNumber(row.avance)}</td>
+                <td>${formatNumber(row.pendiente)}</td>
+                <td><strong>${numberValue(row.porcentaje).toFixed(1)}%</strong></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+    : `<div class="module-empty">No hay actividades VIF programadas para esta delegación.</div>`;
 }
 
 /* =========================================================
@@ -7690,6 +7837,7 @@ function buildDelegationMapGroups(features) {
       feature.attributes || {};
 
     if (
+      row.__vif_planning !== true &&
       !isVisibleActivityRow(row) &&
       !(
         isNationalViewerRole() &&
