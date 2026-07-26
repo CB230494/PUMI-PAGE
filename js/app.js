@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260726-vif-tracking1";
+import { ApiService } from "../services/api-service.js?v=20260725-pdf-filename2";
 
 const api = new ApiService();
 
@@ -121,6 +121,8 @@ const REGION_CENTRO = {
   "12": [10.15, -83.50]
 };
 
+const ANNUAL_PROGRAMS_LABEL = "DARE, MPAS, GREAT, PSCC y PPL";
+
 const state = {
   user: null,
   actividades: [],
@@ -152,8 +154,7 @@ const state = {
   },
   selectedInstitutions: [],
   vifaHistorico: [],
-  centrosEducativos: [],
-  nationalTracking: null
+  centrosEducativos: []
 };
 
 const $ = (id) => document.getElementById(id);
@@ -339,14 +340,6 @@ function buildNavigation() {
     });
   }
 
-  if (isNationalViewerRole()) {
-    items.push({
-      id: "seguimiento-nacional",
-      label: "Seguimiento nacional",
-      icon: "🧭"
-    });
-  }
-
   if (isNationalCoordinatorRole() || isNationalViewerRole()) {
     items.push({
       id: "informes",
@@ -438,11 +431,6 @@ function navigate(pageId, title) {
     return;
   }
 
-  if (pageId === "seguimiento-nacional") {
-    renderNationalTrackingModule();
-    return;
-  }
-
   if (pageId === "informes") {
     renderReportsModule();
     return;
@@ -502,17 +490,12 @@ async function loadData() {
       api.getDelegations(),
       api.getActivityOptions(),
       api.getDashboard(),
-      loadStaticJson("./data/vif-historico.json", { registros: [] }),
+      loadStaticJson("./data/vifa-historico.json", { registros: [] }),
       loadStaticJson("./data/centros-educativos.json", { centros: [] })
     ]);
 
     state.activityOptions =
       (activityOptions.options || [])
-        .map((option) => ({
-          ...option,
-          programa: normalize(option.programa) === "VIFA" ? "VIF" : option.programa,
-          codigo_actividad: String(option.codigo_actividad || "").replace(/^VIFA(?=-|$)/i, "VIF")
-        }))
         .filter(isSelectableActivityOption);
 
     state.actividades =
@@ -2860,11 +2843,11 @@ function toggleBreakdownPanel(visible) {
 function renderKpisFromDashboard(kpis) {
   renderKpiCards([
     ["Registros", numberValue(kpis.registros)],
-    ["Meta", numberValue(kpis.meta)],
-    ["Avance", numberValue(kpis.avance)],
-    ["Pendiente", numberValue(kpis.pendiente)],
+    [`Meta anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.meta)],
+    [`Avance anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.avance)],
+    [`Pendiente anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.pendiente)],
     [
-      "% avance",
+      `% anual (${ANNUAL_PROGRAMS_LABEL})`,
       `${numberValue(
         kpis.porcentaje_avance
       ).toFixed(1)}%`
@@ -2902,10 +2885,10 @@ function renderKpisFromLocal() {
 
   const cards = [
     ["Registros", rows.length],
-    ["Meta anual (otros programas)", meta],
-    ["Avance anual (otros programas)", advance],
-    ["Pendiente anual (otros programas)", pending],
-    ["% anual (otros programas)", `${percentage.toFixed(1)}%`],
+    [`Meta anual (${ANNUAL_PROGRAMS_LABEL})`, meta],
+    [`Avance anual (${ANNUAL_PROGRAMS_LABEL})`, advance],
+    [`Pendiente anual (${ANNUAL_PROGRAMS_LABEL})`, pending],
+    [`% anual (${ANNUAL_PROGRAMS_LABEL})`, `${percentage.toFixed(1)}%`],
     ["Participantes", participants]
   ];
 
@@ -3375,53 +3358,43 @@ function buildVifaQuarterSummary() {
 }
 
 function renderVifaProgramSummaryCard() {
-  const summaries = buildVifaQuarterSummary();
   const currentQuarter = getCurrentVifaQuarter();
-  const current = summaries.find(
+  const current = buildVifaQuarterSummary().find(
     (item) => item.trimestre === currentQuarter
   );
 
-  if (!summaries.some((item) => item.programadas > 0)) {
+  if (!current || numberValue(current.programadas) <= 0) {
     return "";
   }
 
   return `
     <div class="program-progress-row vifa-quarter-program-row">
-      <div class="program-progress-name" title="VIF">
-        VIF
+      <div class="program-progress-name" title="VIF ${escapeHtml(currentQuarter)}">
+        VIF ${escapeHtml(currentQuarter)}
       </div>
 
       <div class="program-progress-center">
         <div class="program-progress-track">
           <div
             class="program-progress-fill"
-            style="width:${Math.min(numberValue(current?.porcentaje), 100)}%"
+            style="width:${Math.min(numberValue(current.porcentaje), 100)}%"
           ></div>
         </div>
 
         <div class="program-progress-detail">
-          ${escapeHtml(currentQuarter)}:
-          <strong>${numberValue(current?.cumplidas)}</strong>
-          de
-          <strong>${numberValue(current?.programadas)}</strong>
-          actividades cumplidas
-          · En proceso:
-          <strong>${numberValue(current?.en_proceso)}</strong>
-        </div>
-
-        <div class="vifa-quarter-mini-grid" style="display:grid;grid-template-columns:repeat(4,minmax(75px,1fr));gap:6px;margin-top:8px;">
-          ${summaries.map((item) => `
-            <div style="padding:7px 8px;border:1px solid #d9e2f1;border-radius:9px;background:#f7f9fd;font-size:.78rem;">
-              <strong>${item.trimestre}</strong>
-              <span style="display:block;">${numberValue(item.porcentaje).toFixed(1)}%</span>
-              <small>${escapeHtml(item.estado_periodo)}</small>
-            </div>
-          `).join("")}
+          Actividades programadas:
+          <strong>${numberValue(current.programadas)}</strong>
+          · Cumplidas:
+          <strong>${numberValue(current.cumplidas)}</strong>
+          · Con avance:
+          <strong>${numberValue(current.en_proceso)}</strong>
+          · Pendientes:
+          <strong>${numberValue(current.pendientes)}</strong>
         </div>
       </div>
 
       <div class="program-progress-percentage">
-        ${numberValue(current?.porcentaje).toFixed(1)}%
+        ${numberValue(current.porcentaje).toFixed(1)}%
       </div>
     </div>
   `;
@@ -3566,10 +3539,15 @@ function renderActivityBreakdownFromLocal() {
 }
 
 function renderVifaQuarterBreakdown() {
-  const summaries = buildVifaQuarterSummary();
-  const details = buildVifaQuarterDetails();
+  const currentQuarter = getCurrentVifaQuarter();
+  const current = buildVifaQuarterSummary().find(
+    (item) => item.trimestre === currentQuarter
+  );
+  const details = buildVifaQuarterDetails().filter(
+    (row) => row.trimestre === currentQuarter
+  );
 
-  if (!summaries.some((item) => item.programadas > 0)) {
+  if (!current || numberValue(current.programadas) <= 0) {
     return "";
   }
 
@@ -3577,8 +3555,8 @@ function renderVifaQuarterBreakdown() {
     <section style="margin-bottom:24px;">
       <div class="panel-header" style="margin-bottom:12px;">
         <div>
-          <span class="panel-kicker">VIF</span>
-          <h3>Cumplimiento por trimestre</h3>
+          <span class="panel-kicker">VIF ${escapeHtml(currentQuarter)}</span>
+          <h3>Avance del trimestre en curso</h3>
         </div>
       </div>
 
@@ -3587,34 +3565,30 @@ function renderVifaQuarterBreakdown() {
           <thead>
             <tr>
               <th>Trimestre</th>
-              <th>Estado del periodo</th>
               <th>Programadas</th>
-              <th>Cumplidas</th>
-              <th>En proceso</th>
-              <th>Pendientes</th>
+              <th>Completas</th>
+              <th>Con avance</th>
+              <th>Incompletas</th>
               <th>% cumplimiento</th>
             </tr>
           </thead>
           <tbody>
-            ${summaries.map((item) => `
-              <tr>
-                <td><strong>${item.trimestre}</strong></td>
-                <td>${escapeHtml(item.estado_periodo)}</td>
-                <td>${formatNumber(item.programadas)}</td>
-                <td>${formatNumber(item.cumplidas)}</td>
-                <td>${formatNumber(item.en_proceso)}</td>
-                <td>${formatNumber(item.pendientes)}</td>
-                <td><strong>${numberValue(item.porcentaje).toFixed(1)}%</strong></td>
-              </tr>
-            `).join("")}
+            <tr>
+              <td><strong>${escapeHtml(currentQuarter)}</strong></td>
+              <td>${formatNumber(current.programadas)}</td>
+              <td>${formatNumber(current.cumplidas)}</td>
+              <td>${formatNumber(current.en_proceso)}</td>
+              <td>${formatNumber(current.pendientes)}</td>
+              <td><strong>${numberValue(current.porcentaje).toFixed(1)}%</strong></td>
+            </tr>
           </tbody>
         </table>
       </div>
 
       <div class="panel-header" style="margin:22px 0 12px;">
         <div>
-          <span class="panel-kicker">Detalle VIF</span>
-          <h3>Actividades programadas por trimestre</h3>
+          <span class="panel-kicker">Detalle VIF ${escapeHtml(currentQuarter)}</span>
+          <h3>Actividades programadas para el trimestre</h3>
         </div>
       </div>
 
@@ -3622,7 +3596,6 @@ function renderVifaQuarterBreakdown() {
         <table class="data-table">
           <thead>
             <tr>
-              <th>Trimestre</th>
               <th>Actividad</th>
               <th>Línea base / control</th>
               <th>Avance</th>
@@ -3633,7 +3606,6 @@ function renderVifaQuarterBreakdown() {
           <tbody>
             ${details.map((row) => `
               <tr>
-                <td><strong>${row.trimestre}</strong></td>
                 <td>${escapeHtml(row.actividad || row.codigo)}</td>
                 <td>${row.control_trimestral ? "Control trimestral" : formatNumber(row.linea_base)}</td>
                 <td>${row.control_trimestral ? (row.avance > 0 ? "Cumplido" : "Sin registro") : formatNumber(row.avance_computable)}</td>
@@ -9675,180 +9647,6 @@ function setSelectValue(
   select.value = "";
 }
 
-
-/* =========================================================
-   SEGUIMIENTO NACIONAL — SOLO VISOR NACIONAL
-========================================================= */
-
-async function renderNationalTrackingModule() {
-  if (!isNationalViewerRole()) {
-    renderComing("Seguimiento nacional");
-    return;
-  }
-
-  $("coming-page").innerHTML = `
-    <section class="tracking-shell">
-      <article class="panel-card tracking-hero">
-        <div>
-          <span class="panel-kicker">VISOR NACIONAL</span>
-          <h2>Seguimiento nacional de movimientos</h2>
-          <p>Consulte el recorrido de las actividades desde la delegación hasta la resolución nacional.</p>
-        </div>
-        <div class="tracking-hero-icon">🧭</div>
-      </article>
-
-      <article class="panel-card tracking-panel">
-        <div class="tracking-filters">
-          <label>Dirección Regional<select id="tracking-region"><option value="">Todas</option></select></label>
-          <label>Delegación<select id="tracking-delegation"><option value="">Todas</option></select></label>
-          <label>Programa<select id="tracking-program"><option value="">Todos</option></select></label>
-          <label>Actividad<select id="tracking-activity"><option value="">Todas</option></select></label>
-          <label>Movimiento<select id="tracking-action">
-            <option value="">Todos</option>
-            <option value="CREACION">Creación</option>
-            <option value="CONFIRMACION_ENVIO">Envío a Región</option>
-            <option value="REVISION_REGIONAL">Revisión regional</option>
-            <option value="VALIDACION_NACIONAL">Resolución nacional</option>
-            <option value="ACTUALIZACION">Actualización</option>
-            <option value="ELIMINACION_LOGICA">Eliminación de registro</option>
-          </select></label>
-          <label>Desde<input id="tracking-from" type="date"></label>
-          <label>Hasta<input id="tracking-to" type="date"></label>
-        </div>
-        <div class="tracking-actions">
-          <button id="tracking-clear" class="btn btn-secondary">Limpiar filtros</button>
-          <button id="tracking-search" class="btn btn-primary">Consultar movimientos</button>
-        </div>
-      </article>
-
-      <section id="tracking-results"></section>
-    </section>
-  `;
-
-  populateTrackingFilters();
-  renderTrackingPrompt();
-  $("tracking-search")?.addEventListener("click", loadNationalTracking);
-  $("tracking-clear")?.addEventListener("click", () => {
-    ["tracking-region","tracking-delegation","tracking-program","tracking-activity","tracking-action","tracking-from","tracking-to"].forEach((id) => { if ($(id)) $(id).value = ""; });
-    populateTrackingFilters();
-    renderTrackingPrompt();
-  });
-  $("tracking-region")?.addEventListener("change", populateTrackingFilters);
-  $("tracking-program")?.addEventListener("change", populateTrackingFilters);
-}
-
-function renderTrackingPrompt(message = "Seleccione al menos un filtro y pulse Consultar movimientos.") {
-  const target = $("tracking-results");
-  if (!target) return;
-  target.innerHTML = `
-    <article class="panel-card empty-state tracking-prompt">
-      <h3>Consulta de movimientos</h3>
-      <p>${escapeHtml(message)}</p>
-    </article>`;
-}
-
-function hasTrackingFilters() {
-  return [
-    "tracking-region",
-    "tracking-delegation",
-    "tracking-program",
-    "tracking-activity",
-    "tracking-action",
-    "tracking-from",
-    "tracking-to"
-  ].some((id) => String($(id)?.value || "").trim());
-}
-
-function populateTrackingFilters() {
-  const rows = getRows();
-  const regionValue = $("tracking-region")?.value || "";
-  const programValue = $("tracking-program")?.value || "";
-  const unique = (values) => [...new Set(values.filter(Boolean))].sort((a,b) => a.localeCompare(b,"es",{sensitivity:"base"}));
-  const setOptions = (id, values, allLabel) => {
-    const select = $(id); if (!select) return;
-    const current = select.value;
-    select.innerHTML = `<option value="">${allLabel}</option>` + values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
-    if ([...select.options].some((option) => option.value === current)) select.value = current;
-  };
-  setOptions("tracking-region", unique(rows.map((row) => row.direccion_regional)), "Todas");
-  const regionRows = regionValue ? rows.filter((row) => normalize(row.direccion_regional) === normalize(regionValue)) : rows;
-  setOptions("tracking-delegation", unique(regionRows.map((row) => row.delegacion)), "Todas");
-  setOptions("tracking-program", unique(rows.map((row) => normalize(row.programa) === "VIFA" ? "VIF" : row.programa)), "Todos");
-  const programRows = programValue ? rows.filter((row) => normalize(row.programa) === normalize(programValue) || (normalize(programValue) === "VIF" && normalize(row.programa) === "VIFA")) : rows;
-  setOptions("tracking-activity", unique(programRows.map((row) => row.actividad)), "Todas");
-}
-
-async function loadNationalTracking() {
-  const target = $("tracking-results");
-  if (!target) return;
-  if (!hasTrackingFilters()) {
-    renderTrackingPrompt("Debe seleccionar al menos un filtro para evitar mostrar una lista nacional demasiado extensa.");
-    return;
-  }
-  target.innerHTML = `<article class="panel-card empty-state"><p>Cargando movimientos...</p></article>`;
-  try {
-    const result = await api.getNationalTracking({
-      region: $("tracking-region")?.value,
-      delegacion: $("tracking-delegation")?.value,
-      programa: $("tracking-program")?.value,
-      actividad: $("tracking-activity")?.value,
-      accion: $("tracking-action")?.value,
-      desde: $("tracking-from")?.value,
-      hasta: $("tracking-to")?.value,
-      limite: 1000
-    });
-    state.nationalTracking = result;
-    renderNationalTrackingResults(result);
-  } catch (error) {
-    target.innerHTML = `<article class="panel-card empty-state"><h3>No fue posible consultar el seguimiento</h3><p>${escapeHtml(error.message)}</p></article>`;
-  }
-}
-
-function renderNationalTrackingResults(result = {}) {
-  const target = $("tracking-results");
-  if (!target) return;
-  if (result.configured === false) {
-    target.innerHTML = `<article class="panel-card empty-state"><h3>Bitácora no configurada</h3><p>Debe configurarse PUMI_BITACORA_URL en Render para registrar y consultar movimientos.</p></article>`;
-    return;
-  }
-  const movements = result.movements || [];
-  if (!movements.length) {
-    target.innerHTML = `<article class="panel-card empty-state"><h3>Sin movimientos</h3><p>No se encontraron movimientos con los filtros seleccionados.</p></article>`;
-    return;
-  }
-  const counts = movements.reduce((acc,row) => { const key = normalize(row.accion); acc[key]=(acc[key]||0)+1; return acc; },{});
-  target.innerHTML = `
-    <div class="tracking-metrics">
-      <article><span>Total</span><strong>${movements.length}</strong></article>
-      <article><span>Envíos a Región</span><strong>${counts.CONFIRMACION_ENVIO || 0}</strong></article>
-      <article><span>Revisiones regionales</span><strong>${counts.REVISION_REGIONAL || 0}</strong></article>
-      <article><span>Resoluciones nacionales</span><strong>${counts.VALIDACION_NACIONAL || 0}</strong></article>
-    </div>
-    <article class="panel-card tracking-list-card">
-      <div class="tracking-list-head"><h3>Movimientos registrados</h3><span>${movements.length} resultados</span></div>
-      <div class="tracking-list">
-        ${movements.map((row) => `
-          <details class="tracking-item">
-            <summary>
-              <span class="tracking-dot ${normalize(row.accion).toLowerCase()}"></span>
-              <span class="tracking-time">${escapeHtml(formatDateTime(row.fecha))}</span>
-              <span class="tracking-main"><strong>${escapeHtml(row.movimiento || row.accion)}</strong><small>${escapeHtml([row.delegacion,row.direccion_regional,row.programa].filter(Boolean).join(" · "))}</small></span>
-              <span class="tracking-status">${escapeHtml(row.estado_actual || row.destino || "")}</span>
-            </summary>
-            <div class="tracking-detail">
-              <div><b>ID PUMI:</b> ${escapeHtml(row.id_pumi)}</div>
-              <div><b>Actividad:</b> ${escapeHtml(row.actividad || "Sin detalle")}</div>
-              <div><b>Usuario:</b> ${escapeHtml(row.usuario || "No registrado")}</div>
-              <div><b>Destino:</b> ${escapeHtml(row.destino || "Seguimiento")}</div>
-              <div class="tracking-detail-wide"><b>Detalle:</b> ${escapeHtml(row.detalle || "Sin observación")}</div>
-              ${row.observacion_regional ? `<div class="tracking-detail-wide"><b>Observación regional:</b> ${escapeHtml(row.observacion_regional)}</div>` : ""}
-              ${row.observacion_nacional ? `<div class="tracking-detail-wide"><b>Observación nacional:</b> ${escapeHtml(row.observacion_nacional)}</div>` : ""}
-            </div>
-          </details>
-        `).join("")}
-      </div>
-    </article>`;
-}
 
 /* =========================================================
    INFORMES PDF
