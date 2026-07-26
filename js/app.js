@@ -9709,6 +9709,8 @@ async function renderNationalTrackingModule() {
             <option value="CONFIRMACION_ENVIO">Envío a Región</option>
             <option value="REVISION_REGIONAL">Revisión regional</option>
             <option value="VALIDACION_NACIONAL">Resolución nacional</option>
+            <option value="ACTUALIZACION">Actualización</option>
+            <option value="ELIMINACION_LOGICA">Eliminación de registro</option>
           </select></label>
           <label>Desde<input id="tracking-from" type="date"></label>
           <label>Hasta<input id="tracking-to" type="date"></label>
@@ -9724,15 +9726,37 @@ async function renderNationalTrackingModule() {
   `;
 
   populateTrackingFilters();
+  renderTrackingPrompt();
   $("tracking-search")?.addEventListener("click", loadNationalTracking);
   $("tracking-clear")?.addEventListener("click", () => {
     ["tracking-region","tracking-delegation","tracking-program","tracking-activity","tracking-action","tracking-from","tracking-to"].forEach((id) => { if ($(id)) $(id).value = ""; });
     populateTrackingFilters();
-    loadNationalTracking();
+    renderTrackingPrompt();
   });
   $("tracking-region")?.addEventListener("change", populateTrackingFilters);
   $("tracking-program")?.addEventListener("change", populateTrackingFilters);
-  await loadNationalTracking();
+}
+
+function renderTrackingPrompt(message = "Seleccione al menos un filtro y pulse Consultar movimientos.") {
+  const target = $("tracking-results");
+  if (!target) return;
+  target.innerHTML = `
+    <article class="panel-card empty-state tracking-prompt">
+      <h3>Consulta de movimientos</h3>
+      <p>${escapeHtml(message)}</p>
+    </article>`;
+}
+
+function hasTrackingFilters() {
+  return [
+    "tracking-region",
+    "tracking-delegation",
+    "tracking-program",
+    "tracking-activity",
+    "tracking-action",
+    "tracking-from",
+    "tracking-to"
+  ].some((id) => String($(id)?.value || "").trim());
 }
 
 function populateTrackingFilters() {
@@ -9757,6 +9781,10 @@ function populateTrackingFilters() {
 async function loadNationalTracking() {
   const target = $("tracking-results");
   if (!target) return;
+  if (!hasTrackingFilters()) {
+    renderTrackingPrompt("Debe seleccionar al menos un filtro para evitar mostrar una lista nacional demasiado extensa.");
+    return;
+  }
   target.innerHTML = `<article class="panel-card empty-state"><p>Cargando movimientos...</p></article>`;
   try {
     const result = await api.getNationalTracking({
