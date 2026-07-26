@@ -3286,8 +3286,10 @@ function buildVifaQuarterDetails() {
       });
     }
 
-    const item = obligations.get(key);
-    item.avance += numberValue(row.avance);
+    // El archivo local VIF define la planificación histórica y trimestral.
+    // No representa ejecución validada. El avance se incorpora únicamente
+    // desde PUMI_ACTIVIDADES cuando el registro fue validado nacionalmente.
+    // Por eso aquí no se suma row.avance al cumplimiento.
   }
 
   for (const row of getVifaValidatedRows()) {
