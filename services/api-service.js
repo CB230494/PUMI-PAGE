@@ -373,4 +373,23 @@ export class ApiService {
     URL.revokeObjectURL(url);
   }
 
+  /* =========================================================
+     SEGUIMIENTO NACIONAL — SOLO VISOR NACIONAL
+  ========================================================= */
+
+  getNationalTracking(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        params.set(key, String(value));
+      }
+    });
+    const query = params.toString();
+    return this.request(`/api/seguimiento-nacional${query ? `?${query}` : ""}`);
+  }
+
+  getNationalTrackingDetail(idPumi) {
+    return this.request(`/api/seguimiento-nacional/${encodeURIComponent(idPumi)}`);
+  }
+
 }
