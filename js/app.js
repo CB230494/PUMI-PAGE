@@ -1,4 +1,4 @@
-import { ApiService } from "../services/api-service.js?v=20260726-vif-integrado-final";
+import { ApiService } from "../services/api-service.js?v=20260726-regional-extra1";
 
 const api = new ApiService();
 
@@ -154,6 +154,7 @@ const state = {
   },
   selectedInstitutions: [],
   vifaHistorico: [],
+  vifPlanificacion: [],
   centrosEducativos: []
 };
 
@@ -482,6 +483,7 @@ async function loadData() {
       activityOptions,
       dashboard,
       vifaHistorico,
+      vifPlanificacion,
       centrosEducativos
     ] = await Promise.all([
       api.getActivities(),
@@ -491,6 +493,7 @@ async function loadData() {
       api.getActivityOptions(),
       api.getDashboard(),
       loadStaticJson("./data/vif-historico.json", { registros: [] }),
+      loadStaticJson("./data/vif-planificacion.json", { registros: [] }),
       loadStaticJson("./data/centros-educativos.json", { centros: [] })
     ]);
 
@@ -507,6 +510,7 @@ async function loadData() {
     state.catalogos = catalogs.features || [];
     state.delegaciones = delegations.features || [];
     state.vifaHistorico = vifaHistorico.registros || [];
+    state.vifPlanificacion = vifPlanificacion.registros || [];
     state.centrosEducativos = centrosEducativos.centros || [];
 
     state.dashboard =
@@ -1221,8 +1225,6 @@ function renderDashboard() {
 }
 
 function renderVifCoordinatorDashboard() {
-  /* VIF conserva su medición trimestral, pero utiliza exactamente la misma
-     estructura visual y territorial de los demás programas. */
   toggleBreakdownPanel(true);
 
   const quarter = getCurrentVifaQuarter();
@@ -1236,10 +1238,6 @@ function renderVifCoordinatorDashboard() {
     porcentaje: 0
   };
 
-  const details = getCurrentVifCoordinatorDetails();
-  const mapFeatures = buildVifCoordinatorMapFeatures(details);
-  const delegationRows = buildVifCoordinatorDelegationRows(details);
-
   renderKpiCards([
     [`VIF ${quarter}`, `${numberValue(summary.porcentaje).toFixed(1)}%`],
     ["Actividades programadas", numberValue(summary.programadas)],
@@ -1248,15 +1246,17 @@ function renderVifCoordinatorDashboard() {
     ["Pendientes", numberValue(summary.pendientes)]
   ]);
 
-  $("program-summary").innerHTML = renderVifaProgramSummaryCard() || `
+  const programHtml = renderVifaProgramSummaryCard();
+  $("program-summary").innerHTML = programHtml || `
     <div class="module-empty">
       No hay actividades VIF programadas para ${escapeHtml(quarter)}.
     </div>
   `;
 
+  const breakdownHtml = renderVifaQuarterBreakdown();
   const activityContainer = $("activity-summary");
   if (activityContainer) {
-    activityContainer.innerHTML = renderVifaQuarterBreakdown() || `
+    activityContainer.innerHTML = breakdownHtml || `
       <div class="module-empty">
         No hay planificación VIF disponible para ${escapeHtml(quarter)}.
       </div>
@@ -1264,78 +1264,8 @@ function renderVifCoordinatorDashboard() {
   }
 
   renderStatusSummaryFromLocal();
-
-  state.dashboard = {
-    ...(state.dashboard || {}),
-    map_features: mapFeatures,
-    delegations: delegationRows
-  };
-
-  renderDelegationOverview(delegationRows);
-  renderDashboardMapFromFilters();
-}
-
-function getCurrentVifCoordinatorDetails() {
-  const quarter = getCurrentVifaQuarter();
-  return buildVifaQuarterDetails().filter(
-    (row) => row.trimestre === quarter
-  );
-}
-
-function buildVifCoordinatorMapFeatures(details = []) {
-  return details.map((row, index) => ({
-    attributes: {
-      OBJECTID: `VIF-PLAN-${index + 1}`,
-      programa: "VIF",
-      actividad: row.actividad || row.codigo || "Actividad VIF",
-      delegacion: row.delegacion || "Sin delegación",
-      direccion_regional: row.direccion_regional || "Sin región",
-      meta: row.control_trimestral ? 1 : Math.max(numberValue(row.linea_base), 0),
-      avance: row.control_trimestral
-        ? (numberValue(row.avance) > 0 ? 1 : 0)
-        : Math.max(numberValue(row.avance), 0),
-      pendiente: row.control_trimestral
-        ? (numberValue(row.avance) > 0 ? 0 : 1)
-        : Math.max(numberValue(row.linea_base) - numberValue(row.avance), 0),
-      porcentaje_cumplimiento: numberValue(row.porcentaje),
-      estado_registro: "ACTIVO",
-      estado_flujo: numberValue(row.avance) > 0 ? "VALIDADO_NACIONAL" : "PLANIFICADA",
-      estado_nacional: numberValue(row.avance) > 0 ? "VALIDADO_NACIONAL" : "SIN_EJECUCION",
-      archivo_origen: "PLANIFICACION_VIF_LOCAL",
-      trimestre_ejecucion_vifa: row.trimestre,
-      codigo_actividad_vifa: row.codigo,
-      __vif_planning: true
-    },
-    geometry: null
-  }));
-}
-
-function buildVifCoordinatorDelegationRows(details = []) {
-  const grouped = new Map();
-
-  for (const row of details) {
-    const key = getDelegationCanonicalKey(row.delegacion) || normalize(row.delegacion);
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        delegacion: getOfficialDelegationName(row.delegacion || "Sin delegación"),
-        direccion_regional: row.direccion_regional || "Sin región",
-        registros: 0,
-        pendientes_regional: 0,
-        pendientes_nacional: 0,
-        validados: 0
-      });
-    }
-
-    const item = grouped.get(key);
-    item.registros += 1;
-    if (numberValue(row.avance) > 0) {
-      item.validados += 1;
-    }
-  }
-
-  return [...grouped.values()].sort((a, b) =>
-    a.delegacion.localeCompare(b.delegacion, "es")
-  );
+  renderMap(getVifaValidatedRows());
+  renderDelegationOverview([]);
 }
 
 function renderNationalViewerDashboard() {
@@ -3257,11 +3187,47 @@ function isVifaRecordInCurrentScope(row = {}) {
 }
 
 function getVifaPlanningOptions() {
-  return (state.activityOptions || []).filter(
-    (option) =>
-      normalize(option.programa) === "VIF" &&
-      isVifaRecordInCurrentScope(option)
-  );
+  const planningByKey = new Map();
+
+  for (const row of state.vifPlanificacion || []) {
+    const option = {
+      ...row,
+      programa: "VIF",
+      meta: numberValue(row.linea_base),
+      es_control_trimestral: row.control_trimestral === true,
+      trimestre_programado_vifa: row.trimestre_programado || "",
+      codigo_actividad_vifa: row.codigo_actividad || ""
+    };
+
+    if (!isVifaRecordInCurrentScope(option)) continue;
+
+    const key = [
+      getDelegationCanonicalKey(option.delegacion),
+      normalize(option.codigo_actividad)
+    ].join("|||");
+
+    planningByKey.set(key, option);
+  }
+
+  // Las opciones entregadas por la API prevalecen porque incluyen
+  // avance validado, registros en revisión y disponibilidad actual.
+  for (const option of state.activityOptions || []) {
+    if (
+      normalize(option.programa) !== "VIF" ||
+      !isVifaRecordInCurrentScope(option)
+    ) {
+      continue;
+    }
+
+    const key = [
+      getDelegationCanonicalKey(option.delegacion || state.user?.delegation),
+      normalize(option.codigo_actividad || option.codigo_actividad_vifa)
+    ].join("|||");
+
+    planningByKey.set(key, option);
+  }
+
+  return [...planningByKey.values()];
 }
 
 function getVifaHistoricalRows() {
@@ -4109,15 +4075,11 @@ function renderDelegationOverview(delegations) {
 }
 
 function getDashboardActivityNames() {
-  const sourceRows = isVifNationalCoordinator()
-    ? getCurrentVifCoordinatorDetails()
-    : getRows();
-
   return [
     ...new Set(
-      sourceRows
+      getRows()
         .map((row) =>
-          String(row.actividad || row.codigo || "").trim()
+          String(row.actividad || "").trim()
         )
         .filter(Boolean)
         .filter(
@@ -4140,7 +4102,7 @@ function getDashboardMapFeatures() {
     const row =
       feature.attributes || {};
 
-    if (!isVisibleActivityRow(row) && row.__vif_planning !== true) {
+    if (!isVisibleActivityRow(row)) {
       return false;
     }
 
@@ -4176,35 +4138,6 @@ function renderDashboardMapFromFilters() {
 
 async function loadDelegationBreakdown(delegation) {
   try {
-    if (isVifNationalCoordinator()) {
-      const rows = getCurrentVifCoordinatorDetails()
-        .filter((row) =>
-          getDelegationCanonicalKey(row.delegacion) ===
-          getDelegationCanonicalKey(delegation)
-        )
-        .map((row) => ({
-          programa: "VIF",
-          actividad: row.actividad || row.codigo,
-          meta: row.control_trimestral ? 1 : numberValue(row.linea_base),
-          avance: row.control_trimestral
-            ? (numberValue(row.avance) > 0 ? 1 : 0)
-            : numberValue(row.avance),
-          pendiente: row.control_trimestral
-            ? (numberValue(row.avance) > 0 ? 0 : 1)
-            : Math.max(numberValue(row.linea_base) - numberValue(row.avance), 0),
-          porcentaje: numberValue(row.porcentaje)
-        }));
-
-      toggleBreakdownPanel(true);
-      renderVifDelegationBreakdown(rows, delegation);
-
-      $("activity-breakdown-panel")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      });
-      return;
-    }
-
     const dashboard =
       await api.getDashboard(delegation);
 
@@ -4222,46 +4155,6 @@ async function loadDelegationBreakdown(delegation) {
   } catch (error) {
     showToast(error.message, true);
   }
-}
-
-function renderVifDelegationBreakdown(rows = [], delegation = "") {
-  const container = $("activity-summary");
-  if (!container) return;
-
-  container.innerHTML = rows.length
-    ? `
-      <div class="panel-header" style="margin-bottom:12px;">
-        <div>
-          <span class="panel-kicker">VIF ${escapeHtml(getCurrentVifaQuarter())}</span>
-          <h3>${escapeHtml(delegation)}</h3>
-        </div>
-      </div>
-      <div class="table-scroll">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Actividad</th>
-              <th>Línea base / control</th>
-              <th>Avance validado</th>
-              <th>Pendiente</th>
-              <th>% cumplimiento</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map((row) => `
-              <tr>
-                <td><strong>${escapeHtml(row.actividad)}</strong></td>
-                <td>${formatNumber(row.meta)}</td>
-                <td>${formatNumber(row.avance)}</td>
-                <td>${formatNumber(row.pendiente)}</td>
-                <td><strong>${numberValue(row.porcentaje).toFixed(1)}%</strong></td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    `
-    : `<div class="module-empty">No hay actividades VIF programadas para esta delegación.</div>`;
 }
 
 /* =========================================================
@@ -4672,18 +4565,24 @@ function renderActivityForm(editingRow = null) {
           </label>
 
           <label>
-            Número de seguimiento
+            Tipo de documento de respaldo
             <select id="activity-follow-up-type" required>
               <option value="">Seleccione una opción</option>
               <option value="ACCIÓN OPERATIVA">Acción operativa</option>
               <option value="ORDEN DE OPERACIÓN">Orden de operación</option>
               <option value="ACTA DE FINALIZACIÓN">Acta de finalización</option>
               <option value="OFICIO DE DELEGACIÓN">Oficio de delegación</option>
+              <option value="OTRO">Otro</option>
             </select>
           </label>
 
+          <label id="activity-follow-up-other-wrap" class="hidden">
+            Especifique otro documento
+            <input id="activity-follow-up-other" type="text">
+          </label>
+
           <label>
-            Número consecutivo
+            Número o referencia del documento
             <input id="activity-follow-up-number" type="text" required>
           </label>
         </div>
@@ -4727,6 +4626,21 @@ function setupActivityForm(editingRow) {
 
   const activitySelect =
     $("activity-name");
+
+  const followUpTypeSelect = $("activity-follow-up-type");
+  const followUpOtherWrap = $("activity-follow-up-other-wrap");
+  const followUpOtherInput = $("activity-follow-up-other");
+
+  function updateFollowUpOtherField() {
+    const isOther = normalize(followUpTypeSelect?.value) === "OTRO";
+    followUpOtherWrap?.classList.toggle("hidden", !isOther);
+    if (followUpOtherInput) {
+      followUpOtherInput.required = isOther;
+      if (!isOther) followUpOtherInput.value = "";
+    }
+  }
+
+  followUpTypeSelect?.addEventListener("change", updateFollowUpOtherField);
 
   const recordTypeSelect = $("activity-record-type");
   const isAdditionalMode = () => recordTypeSelect?.value === "ADICIONAL_NO_PROGRAMADA";
@@ -4881,6 +4795,8 @@ function setupActivityForm(editingRow) {
     "change",
     updateProgressCard
   );
+
+  updateFollowUpOtherField();
 
   setupParticipantValidation();
   setupLocationSelectors();
@@ -5561,10 +5477,30 @@ function fillActivityForm(row) {
       : "PLANIFICADA";
   }
 
-  setSelectValue(
-    $("activity-follow-up-type"),
-    getStoredFollowUpType(row.tipo_seguimiento || "")
+  const storedFollowUpType = getStoredFollowUpType(
+    row.tipo_seguimiento || ""
   );
+  const standardFollowUpTypes = [
+    "ACCIÓN OPERATIVA",
+    "ORDEN DE OPERACIÓN",
+    "ACTA DE FINALIZACIÓN",
+    "OFICIO DE DELEGACIÓN"
+  ];
+
+  if (
+    storedFollowUpType &&
+    !standardFollowUpTypes.some(
+      (value) => normalize(value) === normalize(storedFollowUpType)
+    )
+  ) {
+    setSelectValue($("activity-follow-up-type"), "OTRO");
+    $("activity-follow-up-other").value = storedFollowUpType;
+  } else {
+    setSelectValue($("activity-follow-up-type"), storedFollowUpType);
+    $("activity-follow-up-other").value = "";
+  }
+
+  $("activity-follow-up-type").dispatchEvent(new Event("change"));
 
   $("activity-follow-up-number").value =
     row.numero_consecutivo ||
@@ -5722,8 +5658,16 @@ async function submitActivity(event) {
     const otherPlace = $("activity-other-place").value.trim();
     const institutions = getSelectedInstitutions();
     const otherInstitution = getOtherInstitutionsText();
-    const followUpType = $("activity-follow-up-type").value;
+    const selectedFollowUpType = $("activity-follow-up-type").value;
+    const customFollowUpType = $("activity-follow-up-other").value.trim();
+    const followUpType = normalize(selectedFollowUpType) === "OTRO"
+      ? customFollowUpType
+      : selectedFollowUpType;
     const followUpNumber = $("activity-follow-up-number").value.trim();
+
+    if (normalize(selectedFollowUpType) === "OTRO" && !customFollowUpType) {
+      errors.push("Debe especificar el otro tipo de documento de respaldo.");
+    }
 
     const isVifa = isVifaOption(selectedOption);
     const vifaFormName = $("activity-vifa-form-name").value.trim();
@@ -7837,7 +7781,6 @@ function buildDelegationMapGroups(features) {
       feature.attributes || {};
 
     if (
-      row.__vif_planning !== true &&
       !isVisibleActivityRow(row) &&
       !(
         isNationalViewerRole() &&
