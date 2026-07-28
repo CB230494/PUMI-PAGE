@@ -5,22 +5,22 @@ import { ApiService } from "../services/api-service.js?v=20260726-regional-extra
 window.ApiService = ApiService;
 
 const MODULES = [
-  "./core/core.js",
-  "./modules/dashboard-shell.js",
-  "./modules/visor.js",
-  "./modules/dashboard-common.js",
-  "./modules/delegacion.js",
-  "./modules/revision.js",
-  "./modules/mapas.js",
-  "./modules/ui.js",
-  "./modules/informes.js",
-  "./modules/utils.js"
+  "./js/core/core.js",
+  "./js/modules/dashboard-shell.js",
+  "./js/modules/visor.js",
+  "./js/modules/dashboard-common.js",
+  "./js/modules/delegacion.js",
+  "./js/modules/revision.js",
+  "./js/modules/mapas.js",
+  "./js/modules/ui.js",
+  "./js/modules/informes.js",
+  "./js/modules/utils.js"
 ];
 
 function loadClassicScript(path) {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `${path}?v=20260728-modular-etapa1`;
+    script.src = `${path}?v=20260728-modular-rutas2`;
     script.async = false;
     script.onload = resolve;
     script.onerror = () => reject(new Error(`No fue posible cargar ${path}`));
