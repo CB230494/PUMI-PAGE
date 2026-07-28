@@ -1,7 +1,8 @@
-// PUMI modular: arranque controlado y compatible con GitHub Pages.
-// ApiService se carga dinámicamente antes de inicializar los módulos.
+// PUMI 2026 - arranque modular estable para GitHub Pages.
+// Todas las rutas se resuelven respecto a este archivo (js/app.js),
+// no respecto a la URL de la página.
 
-const MODULE_VERSION = "20260728-modular-vif-regional2";
+const MODULE_VERSION = "20260728-modular-estable-01";
 
 const MODULES = [
   "./core/core.js",
@@ -16,23 +17,35 @@ const MODULES = [
   "./modules/utils.js"
 ];
 
-function loadClassicScript(path) {
+function versionedUrl(relativePath) {
+  const url = new URL(relativePath, import.meta.url);
+  url.searchParams.set("v", MODULE_VERSION);
+  return url.href;
+}
+
+function loadClassicScript(relativePath) {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `${path}?v=${MODULE_VERSION}`;
+    script.src = versionedUrl(relativePath);
     script.async = false;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error(`No fue posible cargar ${path}`));
+    script.dataset.pumiModule = relativePath;
+    script.onload = () => resolve();
+    script.onerror = () => reject(
+      new Error(`No fue posible cargar ${relativePath}`)
+    );
     document.head.appendChild(script);
   });
 }
 
 async function bootPumi() {
   try {
-    const apiModule = await import(`../services/api-service.js?v=${MODULE_VERSION}`);
+    const apiModuleUrl = versionedUrl("../services/api-service.js");
+    const apiModule = await import(apiModuleUrl);
+
     if (!apiModule?.ApiService) {
       throw new Error("ApiService no fue exportado correctamente.");
     }
+
     window.ApiService = apiModule.ApiService;
 
     for (const modulePath of MODULES) {
@@ -40,13 +53,21 @@ async function bootPumi() {
     }
 
     if (typeof window.initialize !== "function") {
-      throw new Error("La función initialize no quedó disponible después de cargar los módulos.");
+      throw new Error(
+        "La función initialize no quedó disponible después de cargar los módulos."
+      );
     }
 
+    const start = () => Promise.resolve(window.initialize());
+
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => window.initialize(), { once: true });
+      document.addEventListener("DOMContentLoaded", () => {
+        start().catch((error) => {
+          console.error("Error al inicializar PUMI:", error);
+        });
+      }, { once: true });
     } else {
-      await window.initialize();
+      await start();
     }
   } catch (error) {
     console.error("Error al iniciar PUMI modular:", error);
