@@ -649,13 +649,32 @@ function hasPositiveMetaForActivity(program, activity) {
 }
 
 function isVisibleActivityRow(row = {}) {
-  return (
-    normalize(row.estado_registro) !==
-      "ELIMINADO" &&
-    hasPositiveMetaForActivity(
-      row.programa,
-      row.actividad
-    )
+  if (normalize(row.estado_registro) === "ELIMINADO") {
+    return false;
+  }
+
+  const normalizedProgram = normalize(row.programa);
+  const normalizedActivity = normalize(row.actividad);
+
+  if (
+    !normalizedProgram ||
+    !normalizedActivity ||
+    normalizedProgram === "PROGRAMA" ||
+    normalizedActivity === "ACTIVIDAD"
+  ) {
+    return false;
+  }
+
+  // VIF se valida por su planificación trimestral y puede no existir
+  // en el catálogo anual de metas. No debe excluirse de las bandejas
+  // regionales o nacionales por esa diferencia metodológica.
+  if (normalizedProgram === "VIF" || normalizedProgram === "VIFA") {
+    return true;
+  }
+
+  return hasPositiveMetaForActivity(
+    row.programa,
+    row.actividad
   );
 }
 
