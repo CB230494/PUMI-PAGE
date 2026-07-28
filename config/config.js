@@ -11,4 +11,3 @@ export const APP_CONFIG = {
     usuarios: "/api/usuarios"
   }
 };
-
