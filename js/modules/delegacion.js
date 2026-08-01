@@ -459,6 +459,72 @@ function renderActivityForm(editingRow = null) {
   setupActivityForm(editingRow);
 }
 
+
+function getRegistrationVifQuarter(date = new Date()) {
+  const month = date.getMonth() + 1;
+  if (month <= 3) return "T1";
+  if (month <= 6) return "T2";
+  if (month <= 9) return "T3";
+  return "T4";
+}
+
+function getOptionReviewBreakdown(option) {
+  const result = {
+    additionalReview: 0,
+    additionalValidated: 0,
+    plannedReview: numberValue(option?.avance_en_revision),
+    plannedValidated: numberValue(option?.avance_validado),
+    available: numberValue(option?.disponible_registro)
+  };
+
+  if (!option) return result;
+
+  const sameRows = (state.actividades || [])
+    .map((feature) => feature?.attributes || feature || {})
+    .filter((row) =>
+      normalize(row.programa) === normalize(option.programa) &&
+      normalize(row.actividad) === normalize(option.actividad)
+    );
+
+  for (const row of sameRows) {
+    if (!isAdditionalActivityRow(row)) continue;
+
+    const flow = normalize(row.estado_flujo);
+    const amount = Math.max(
+      numberValue(row.avance_realizado),
+      numberValue(row.avance)
+    );
+
+    if (flow === "PENDIENTE_REGIONAL" || flow === "PENDIENTE_NACIONAL") {
+      result.additionalReview += amount;
+    }
+
+    if (flow === "VALIDADO_NACIONAL") {
+      result.additionalValidated += amount;
+    }
+  }
+
+  // La API histórica puede traer el avance adicional mezclado dentro de los
+  // totales de planificación. En el formulario lo separamos para que una
+  // actividad adicional nunca reduzca el disponible de la actividad planificada.
+  result.plannedReview = Math.max(
+    numberValue(option.avance_en_revision) - result.additionalReview,
+    0
+  );
+
+  result.plannedValidated = Math.max(
+    numberValue(option.avance_validado) - result.additionalValidated,
+    0
+  );
+
+  result.available = Math.max(
+    numberValue(option.meta) - result.plannedValidated - result.plannedReview,
+    0
+  );
+
+  return result;
+}
+
 function setupActivityForm(editingRow) {
   const programSelect =
     $("activity-program");
@@ -509,10 +575,29 @@ function setupActivityForm(editingRow) {
     const program =
       programSelect.value;
 
-    const options = validOptions.filter((item) =>
-      normalize(item.programa) === normalize(program) &&
-      (isAdditionalMode() || isSelectableActivityOption(item))
-    );
+    const currentVifQuarter = getRegistrationVifQuarter();
+
+    const options = validOptions.filter((item) => {
+      if (normalize(item.programa) !== normalize(program)) {
+        return false;
+      }
+
+      if (!isAdditionalMode() && !isSelectableActivityOption(item)) {
+        return false;
+      }
+
+      // VIF se registra únicamente contra las actividades programadas para
+      // el trimestre en curso. Esto mantiene el formulario alineado con el
+      // panel principal de la Delegación.
+      if (normalize(program) === "VIF") {
+        const optionQuarter = normalize(
+          item.trimestre_programado || item.trimestre_programado_vifa || ""
+        );
+        return optionQuarter === currentVifQuarter;
+      }
+
+      return true;
+    });
 
     fillSelect(
       activitySelect,
@@ -583,14 +668,17 @@ function setupActivityForm(editingRow) {
       $("activity-advance").value = 1;
       $("activity-advance").disabled = true;
     } else {
+      const breakdown = getOptionReviewBreakdown(option);
+
       card.innerHTML = `
         <div><span>${isVifa ? "Línea base" : "Meta"}</span><strong>${formatNumber(option.meta)}</strong></div>
-        <div><span>Avance validado</span><strong>${formatNumber(option.avance_validado)}</strong></div>
-        <div><span>En revisión</span><strong>${formatNumber(option.avance_en_revision)}</strong></div>
-        <div><span>Disponible</span><strong>${formatNumber(option.disponible_registro)}</strong></div>
+        <div><span>Avance validado</span><strong>${formatNumber(breakdown.plannedValidated)}</strong></div>
+        <div><span>En revisión planificada</span><strong>${formatNumber(breakdown.plannedReview)}</strong></div>
+        <div><span>En revisión adicional</span><strong>${formatNumber(breakdown.additionalReview)}</strong></div>
+        <div><span>Disponible</span><strong>${formatNumber(breakdown.available)}</strong></div>
       `;
-      $("activity-advance").max = option.disponible_registro;
-      if (option.disponible_registro <= 0 && !state.editingObjectId) {
+      $("activity-advance").max = breakdown.available;
+      if (breakdown.available <= 0 && !state.editingObjectId) {
         $("activity-advance").value = "";
         $("activity-advance").disabled = true;
       } else {
@@ -1412,15 +1500,19 @@ async function submitActivity(event) {
       errors.push("El avance realizado debe ser mayor a cero.");
     }
 
+    const plannedAvailability = selectedOption
+      ? getOptionReviewBreakdown(selectedOption).available
+      : 0;
+
     if (
       selectedOption &&
       !isAdditional &&
       !isQuarterlyVifa &&
       !state.editingObjectId &&
-      quantity > selectedOption.disponible_registro
+      quantity > plannedAvailability
     ) {
       errors.push(
-        `Solo puede registrar ${selectedOption.disponible_registro} como máximo para esta actividad.`
+        `Solo puede registrar ${plannedAvailability} como máximo para esta actividad.`
       );
     }
 
