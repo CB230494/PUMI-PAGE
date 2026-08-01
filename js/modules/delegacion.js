@@ -468,75 +468,49 @@ function getRegistrationVifQuarter(date = new Date()) {
   return "T4";
 }
 
-
-const VIF_T3_ACTIVITY_NAMES = [
-  "Charla prevención de la masculinidad por la igualdad para personas adultas",
-  "Charla prevención de la violencia doméstica e intrafamiliar",
-  "Charla trata de personas para personas adultas y comunidades",
-  "Estrategia de comunicación: prevención, atención integral y no revictimización frente a la violencia sexual",
-  "Estrategia de comunicación contra la trata de personas",
-  "Representación institucional en redes contra la violencia intrafamiliar PLANOVI",
-  "Representación institucional en Subsistema Local de Niñez y Adolescencia (PANI)",
-  "Representación institucional en el Comité Local CLAIS"
-];
-
-function isCurrentQuarterVifOption(option, quarter = getRegistrationVifQuarter()) {
-  if (normalize(option?.programa) !== "VIF") return false;
-
-  const optionQuarter = normalize(
-    option?.trimestre_programado ||
-    option?.trimestre_programado_vifa ||
-    ""
-  );
-
-  if (optionQuarter !== normalize(quarter)) return false;
-
-  // Para T3 usamos exactamente la misma planificación oficial que se
-  // visualiza en el panel principal: 5 actividades con línea base + 3
-  // actividades de control trimestral.
-  if (normalize(quarter) === "T3") {
-    return VIF_T3_ACTIVITY_NAMES.some(
-      (name) => normalize(name) === normalize(option?.actividad)
-    );
-  }
-
-  return true;
-}
-
-function isQuarterlyVifOption(option) {
-  if (!option || normalize(option.programa) !== "VIF") return false;
-
-  const measurement = normalize(
-    option.tipo_medicion ||
-    option.tipo_medicion_vifa ||
-    ""
-  );
-
-  return Boolean(option.es_control_trimestral) ||
-    measurement.includes("CONTROL") ||
-    measurement.includes("TRIMESTRAL");
-}
-
-function getCurrentQuarterVifOptions() {
+/*
+ * VIF tiene dos formas de medición que deben mostrarse juntas en el
+ * formulario de Delegación:
+ *   - actividades con línea base asignadas a un trimestre concreto;
+ *   - controles trimestrales, que aplican en T1, T2, T3 y T4.
+ *
+ * La misma planificación ya utilizada por el panel principal se obtiene
+ * mediante getVifaPlanningOptions(). Así Registrar actividad no depende del
+ * catálogo anual filtrado (state.activityOptions), que excluye los controles
+ * trimestrales por tener meta 0.
+ */
+function getCurrentQuarterVifRegistrationOptions() {
   const quarter = getRegistrationVifQuarter();
+  const options = typeof getVifaPlanningOptions === "function"
+    ? getVifaPlanningOptions()
+    : [];
 
-  const candidates = (state.activityOptions || []).filter(
-    (item) => isCurrentQuarterVifOption(item, quarter)
-  );
+  return options.filter((option) => {
+    if (normalize(option?.programa) !== "VIF") {
+      return false;
+    }
 
-  // Evita duplicados por variantes antiguas del catálogo.
-  const seen = new Set();
-  return candidates.filter((item) => {
-    const key = normalize(
-      item.codigo_actividad ||
-      item.codigo_actividad_vifa ||
-      item.id_planificacion ||
-      item.actividad
-    );
+    const quarterly = typeof isVifaQuarterlyOption === "function"
+      ? isVifaQuarterlyOption(option)
+      : (
+          option?.es_control_trimestral === true ||
+          option?.control_trimestral === true ||
+          normalize(option?.tipo_medicion).includes("TRIMESTRAL")
+        );
 
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    if (quarterly) {
+      return true;
+    }
+
+    const optionQuarter = typeof getVifaOptionQuarter === "function"
+      ? getVifaOptionQuarter(option)
+      : normalize(
+          option?.trimestre_programado ||
+          option?.trimestre_programado_vifa ||
+          ""
+        );
+
+    return normalize(optionQuarter) === normalize(quarter);
   });
 }
 
@@ -644,33 +618,31 @@ function setupActivityForm(editingRow) {
   );
 
   function updateActivities() {
-    const program = programSelect.value;
-    const isVif = normalize(program) === "VIF";
+    const program =
+      programSelect.value;
 
-    let options;
+    // VIF usa exactamente la misma planificación trimestral del panel
+    // principal: actividades con línea base del trimestre + los tres
+    // controles trimestrales. Los demás programas conservan su lógica actual.
+    const options = normalize(program) === "VIF"
+      ? getCurrentQuarterVifRegistrationOptions()
+      : validOptions.filter((item) => {
+          if (normalize(item.programa) !== normalize(program)) {
+            return false;
+          }
 
-    if (isVif) {
-      // VIF debe usar exactamente la planificación del trimestre actual.
-      // No reutilizamos el filtro general porque este excluía las actividades
-      // de control trimestral y dejaba entrar variantes antiguas.
-      options = getCurrentQuarterVifOptions();
-    } else {
-      options = validOptions.filter((item) => {
-        if (normalize(item.programa) !== normalize(program)) {
-          return false;
-        }
+          if (!isAdditionalMode() && !isSelectableActivityOption(item)) {
+            return false;
+          }
 
-        if (!isAdditionalMode() && !isSelectableActivityOption(item)) {
-          return false;
-        }
-
-        return true;
-      });
-    }
+          return true;
+        });
 
     fillSelect(
       activitySelect,
-      options.map((item) => item.actividad),
+      options.map(
+        (item) => item.actividad
+      ),
       false,
       "Seleccione una actividad"
     );
@@ -684,7 +656,11 @@ function setupActivityForm(editingRow) {
     const planning = $("vifa-planning-details");
     const isVifa = isVifaOption(option);
     const additional = isAdditionalMode();
-    const quarterly = isQuarterlyVifOption(option) && !additional;
+    const quarterly = (
+      typeof isVifaQuarterlyOption === "function"
+        ? isVifaQuarterlyOption(option)
+        : Boolean(option?.es_control_trimestral)
+    ) && !additional;
 
     [
       "vifa-form-name-wrap",
@@ -725,24 +701,15 @@ function setupActivityForm(editingRow) {
       $("activity-advance").disabled = false;
       if (!$("activity-advance").value) $("activity-advance").value = 1;
     } else if (quarterly) {
-      const currentQuarter = getRegistrationVifQuarter();
-      const quarterNumber = Number(currentQuarter.replace("T", "")) || 0;
-      const fulfilled = numberValue(option[`cumplimiento_t${quarterNumber}`]) > 0;
-      const reviewing = numberValue(option[`en_revision_t${quarterNumber}`]) > 0;
-      const label = fulfilled ? "Cumplido" : reviewing ? "En revisión" : "Pendiente";
-
-      card.innerHTML = `
-        <div><span>Medición</span><strong>Control trimestral</strong></div>
-        <div><span>${currentQuarter}</span><strong>${label}</strong></div>
-        <div><span>Registro</span><strong>1 control = cumplimiento del trimestre</strong></div>
-      `;
-
+      const quarterCards = [1, 2, 3, 4].map((number) => {
+        const fulfilled = numberValue(option[`cumplimiento_t${number}`]) > 0;
+        const reviewing = numberValue(option[`en_revision_t${number}`]) > 0;
+        const label = fulfilled ? "Cumplido" : reviewing ? "En revisión" : "Pendiente";
+        return `<div><span>T${number}</span><strong>${label}</strong></div>`;
+      }).join("");
+      card.innerHTML = quarterCards;
       $("activity-advance").value = 1;
       $("activity-advance").disabled = true;
-
-      if ($("activity-vifa-quarter")) {
-        $("activity-vifa-quarter").value = currentQuarter;
-      }
     } else {
       const breakdown = getOptionReviewBreakdown(option);
 
@@ -839,16 +806,22 @@ function setupActivityForm(editingRow) {
 }
 
 function getSelectedActivityOption() {
-  return state.activityOptions.find(
+  const selectedProgram = normalize(
+    $("activity-program")?.value
+  );
+
+  const selectedActivity = normalize(
+    $("activity-name")?.value
+  );
+
+  const source = selectedProgram === "VIF"
+    ? getCurrentQuarterVifRegistrationOptions()
+    : state.activityOptions;
+
+  return source.find(
     (item) =>
-      normalize(item.programa) ===
-        normalize(
-          $("activity-program")?.value
-        ) &&
-      normalize(item.actividad) ===
-        normalize(
-          $("activity-name")?.value
-        )
+      normalize(item.programa) === selectedProgram &&
+      normalize(item.actividad) === selectedActivity
   );
 }
 
@@ -1570,7 +1543,11 @@ async function submitActivity(event) {
       );
 
     const isAdditional = $("activity-record-type")?.value === "ADICIONAL_NO_PROGRAMADA";
-    const isQuarterlyVifa = isQuarterlyVifOption(selectedOption) && !isAdditional;
+    const isQuarterlyVifa = (
+      typeof isVifaQuarterlyOption === "function"
+        ? isVifaQuarterlyOption(selectedOption)
+        : Boolean(selectedOption?.es_control_trimestral)
+    ) && !isAdditional;
 
     if (!isAdditional && !isQuarterlyVifa && quantity <= 0) {
       errors.push("El avance realizado debe ser mayor a cero.");
