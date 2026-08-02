@@ -74,6 +74,18 @@ function toggleBreakdownPanel(visible) {
   );
 }
 
+function shouldShowVifDashboardBlocks() {
+  return !isNationalCoordinatorRole() || isVifNationalCoordinator();
+}
+
+function formatVifaPercentage(value) {
+  const percentage = numberValue(value);
+  if (percentage > 0 && percentage < 1) {
+    return `${percentage.toFixed(2)}%`;
+  }
+  return `${percentage.toFixed(1)}%`;
+}
+
 function renderKpisFromDashboard(kpis) {
   const quarter = getCurrentVifaQuarter();
   const vifSummary = buildVifaQuarterSummary().find((item) => item.trimestre === quarter);
@@ -85,8 +97,12 @@ function renderKpisFromDashboard(kpis) {
     [`% anual (${ANNUAL_PROGRAMS_LABEL})`, `${numberValue(kpis.porcentaje_avance).toFixed(1)}%`],
     ["Participantes", numberValue(kpis.participantes)]
   ];
-  if (vifSummary && numberValue(vifSummary.programadas) > 0) {
-    cards.push([`VIF ${quarter}`, `${numberValue(vifSummary.porcentaje).toFixed(1)}%`]);
+  if (
+    shouldShowVifDashboardBlocks() &&
+    vifSummary &&
+    numberValue(vifSummary.programadas) > 0
+  ) {
+    cards.push([`VIF ${quarter}`, formatVifaPercentage(vifSummary.porcentaje)]);
   }
   renderKpiCards(cards);
 }
@@ -302,6 +318,21 @@ function isVifaQuarterlyOption(option = {}) {
 }
 
 function isVifaRecordInCurrentScope(row = {}) {
+  if (isNationalCoordinatorRole()) {
+    // Un Coordinador Nacional solo ve VIF si VIF es su programa asignado.
+    // Esto evita que PPL, DARE, PSCC, etc. reciban tarjetas o datos VIF.
+    if (!isVifNationalCoordinator()) {
+      return false;
+    }
+
+    if (
+      state.dashboardRegionFilter &&
+      !sameRegion(row.direccion_regional, state.dashboardRegionFilter)
+    ) {
+      return false;
+    }
+  }
+
   if (isDelegationRole()) {
     return sameDelegation(
       row.delegacion,
@@ -370,12 +401,26 @@ function getVifaPlanningOptions() {
       continue;
     }
 
+    const optionDelegation =
+      option.delegacion ||
+      (isDelegationRole() ? state.user?.delegation : "");
+
+    // En ámbitos regionales/nacionales la planificación local ya contiene
+    // una fila por delegación. Una opción API sin delegación no debe crear
+    // obligaciones nacionales extra (era la causa de 789 en lugar de 784).
+    if (!optionDelegation) {
+      continue;
+    }
+
     const key = [
-      getDelegationCanonicalKey(option.delegacion || state.user?.delegation),
+      getDelegationCanonicalKey(optionDelegation),
       normalize(option.codigo_actividad || option.codigo_actividad_vifa)
     ].join("|||");
 
-    planningByKey.set(key, option);
+    planningByKey.set(key, {
+      ...option,
+      delegacion: optionDelegation
+    });
   }
 
   return [...planningByKey.values()];
@@ -619,6 +664,10 @@ function buildVifaQuarterSummary() {
 }
 
 function renderVifaProgramSummaryCard() {
+  if (!shouldShowVifDashboardBlocks()) {
+    return "";
+  }
+
   const currentQuarter = getCurrentVifaQuarter();
   const current = buildVifaQuarterSummary().find(
     (item) => item.trimestre === currentQuarter
@@ -655,7 +704,7 @@ function renderVifaProgramSummaryCard() {
       </div>
 
       <div class="program-progress-percentage">
-        ${numberValue(current.porcentaje).toFixed(1)}%
+        ${formatVifaPercentage(current.porcentaje)}
       </div>
     </div>
   `;
@@ -800,6 +849,10 @@ function renderActivityBreakdownFromLocal() {
 }
 
 function renderVifaQuarterBreakdown() {
+  if (!shouldShowVifDashboardBlocks()) {
+    return "";
+  }
+
   const currentQuarter = getCurrentVifaQuarter();
   const current = buildVifaQuarterSummary().find(
     (item) => item.trimestre === currentQuarter
@@ -1066,6 +1119,19 @@ function renderDelegationOverview(delegations) {
       : "Delegaciones de la región";
 
   const activities = getDashboardActivityNames();
+  const regionSource = isVifNationalCoordinator()
+    ? (state.vifPlanificacion || [])
+    : (delegations || []);
+
+  const regions = isNationalCoordinatorRole()
+    ? [
+        ...new Set(
+          regionSource
+            .map((item) => String(item.direccion_regional || "").trim())
+            .filter(Boolean)
+        )
+      ].sort((a, b) => a.localeCompare(b, "es"))
+    : [];
 
   panel.innerHTML = `
     <div class="panel-header">
@@ -1077,6 +1143,18 @@ function renderDelegationOverview(delegations) {
 
     <div class="pumi-delegation-selector">
       <div class="pumi-dashboard-filter-grid">
+        ${isNationalCoordinatorRole() ? `
+          <label>
+            Dirección Regional
+            <select id="dashboard-region-select">
+              <option value="">Todas las regiones</option>
+              ${regions.map((region) => `
+                <option value="${escapeHtml(region)}">${escapeHtml(region)}</option>
+              `).join("")}
+            </select>
+          </label>
+        ` : ""}
+
         <label>
           Delegación
           <select id="dashboard-delegation-select">
@@ -1123,6 +1201,9 @@ function renderDelegationOverview(delegations) {
     </div>
   `;
 
+  const regionSelect =
+    $("dashboard-region-select");
+
   const delegationSelect =
     $("dashboard-delegation-select");
 
@@ -1131,6 +1212,36 @@ function renderDelegationOverview(delegations) {
 
   const preview =
     $("dashboard-delegation-preview");
+
+  if (regionSelect) {
+    setSelectValue(regionSelect, state.dashboardRegionFilter || "");
+  }
+
+  function refreshDelegationOptions() {
+    if (!delegationSelect) return;
+
+    const selectedRegion = regionSelect?.value || state.dashboardRegionFilter || "";
+    const visibleDelegations = (delegations || []).filter((item) =>
+      !selectedRegion || sameRegion(item.direccion_regional, selectedRegion)
+    );
+
+    const currentValue = delegationSelect.value || state.dashboardDelegationFilter || "";
+    delegationSelect.innerHTML = `
+      <option value="">Todas las delegaciones</option>
+      ${visibleDelegations.map((item) => `
+        <option value="${escapeHtml(item.delegacion)}">${escapeHtml(item.delegacion)}</option>
+      `).join("")}
+    `;
+
+    if (visibleDelegations.some((item) => sameDelegation(item.delegacion, currentValue))) {
+      setSelectValue(delegationSelect, currentValue);
+    } else {
+      delegationSelect.value = "";
+      state.dashboardDelegationFilter = "";
+    }
+  }
+
+  refreshDelegationOptions();
 
   setSelectValue(
     delegationSelect,
@@ -1143,6 +1254,8 @@ function renderDelegationOverview(delegations) {
   );
 
   function applyDashboardFilters() {
+    state.dashboardRegionFilter = regionSelect?.value || "";
+
     state.dashboardDelegationFilter =
       delegationSelect?.value || "";
 
@@ -1212,6 +1325,24 @@ function renderDelegationOverview(delegations) {
     );
   }
 
+  regionSelect?.addEventListener(
+    "change",
+    () => {
+      state.dashboardRegionFilter = regionSelect.value || "";
+      state.dashboardDelegationFilter = "";
+      refreshDelegationOptions();
+
+      if (isVifNationalCoordinator()) {
+        // En VIF el filtro regional también recalcula los indicadores
+        // trimestrales, no solo el mapa.
+        renderVifCoordinatorDashboard();
+        return;
+      }
+
+      applyDashboardFilters();
+    }
+  );
+
   delegationSelect?.addEventListener(
     "change",
     applyDashboardFilters
@@ -1226,6 +1357,18 @@ function renderDelegationOverview(delegations) {
 }
 
 function getDashboardActivityNames() {
+  if (isVifNationalCoordinator()) {
+    const quarter = getCurrentVifaQuarter();
+    return [
+      ...new Set(
+        buildVifaQuarterDetails()
+          .filter((row) => row.trimestre === quarter)
+          .map((row) => String(row.actividad || "").trim())
+          .filter(Boolean)
+      )
+    ].sort((a, b) => a.localeCompare(b, "es"));
+  }
+
   return [
     ...new Set(
       getRows()
@@ -1243,7 +1386,115 @@ function getDashboardActivityNames() {
   );
 }
 
+function getVifCoordinatorQuarterDetails() {
+  const quarter = getCurrentVifaQuarter();
+  return buildVifaQuarterDetails().filter((row) => {
+    if (row.trimestre !== quarter) return false;
+
+    if (
+      state.dashboardRegionFilter &&
+      !sameRegion(row.direccion_regional, state.dashboardRegionFilter)
+    ) {
+      return false;
+    }
+
+    if (
+      state.dashboardDelegationFilter &&
+      !sameDelegation(row.delegacion, state.dashboardDelegationFilter)
+    ) {
+      return false;
+    }
+
+    if (
+      state.dashboardActivityFilter &&
+      normalize(row.actividad) !== normalize(state.dashboardActivityFilter)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function getVifCoordinatorMapFeatures() {
+  return getVifCoordinatorQuarterDetails().map((row, index) => ({
+    attributes: {
+      OBJECTID: -(index + 1),
+      programa: "VIF",
+      actividad: row.actividad || row.codigo,
+      delegacion: row.delegacion,
+      direccion_regional: row.direccion_regional,
+      meta: row.control_trimestral ? 1 : numberValue(row.linea_base),
+      avance: row.control_trimestral
+        ? (numberValue(row.avance) > 0 ? 1 : 0)
+        : numberValue(row.avance_computable),
+      pendiente: row.control_trimestral
+        ? (numberValue(row.avance) > 0 ? 0 : 1)
+        : Math.max(numberValue(row.linea_base) - numberValue(row.avance_computable), 0),
+      porcentaje_cumplimiento: numberValue(row.porcentaje),
+      archivo_origen: "VIF_PLANIFICACION_TRIMESTRAL",
+      estado_registro: "ACTIVO",
+      codigo_actividad_vifa: row.codigo,
+      trimestre_programado_vifa: row.trimestre,
+      tipo_medicion_vifa: row.control_trimestral ? "TRIMESTRAL" : "LINEA_BASE"
+    }
+  }));
+}
+
+function buildVifCoordinatorDelegationRows() {
+  const quarter = getCurrentVifaQuarter();
+  const details = buildVifaQuarterDetails().filter((row) =>
+    row.trimestre === quarter &&
+    (!state.dashboardRegionFilter || sameRegion(row.direccion_regional, state.dashboardRegionFilter))
+  );
+
+  const grouped = new Map();
+  for (const row of details) {
+    const key = getDelegationCanonicalKey(row.delegacion);
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        delegacion: getOfficialDelegationName(row.delegacion),
+        direccion_regional: row.direccion_regional || "",
+        registros: 0,
+        pendientes_regional: 0,
+        pendientes_nacional: 0,
+        validados: 0,
+        actividades_programadas: 0,
+        actividades_con_avance: 0
+      });
+    }
+    const item = grouped.get(key);
+    item.actividades_programadas += 1;
+    if (numberValue(row.avance) > 0) item.actividades_con_avance += 1;
+  }
+
+  const liveRows = getRows().filter((row) =>
+    normalize(row.programa) === "VIF" &&
+    !isHistorical(row) &&
+    (!state.dashboardRegionFilter || sameRegion(row.direccion_regional, state.dashboardRegionFilter))
+  );
+
+  for (const row of liveRows) {
+    const key = getDelegationCanonicalKey(row.delegacion);
+    const item = grouped.get(key);
+    if (!item) continue;
+    item.registros += 1;
+    const flow = normalize(row.estado_flujo);
+    if (flow === "PENDIENTE_REGIONAL") item.pendientes_regional += 1;
+    if (flow === "PENDIENTE_NACIONAL") item.pendientes_nacional += 1;
+    if (flow === "VALIDADO_NACIONAL") item.validados += 1;
+  }
+
+  return [...grouped.values()].sort((a, b) =>
+    a.delegacion.localeCompare(b.delegacion, "es")
+  );
+}
+
 function getDashboardMapFeatures() {
+  if (isVifNationalCoordinator()) {
+    return getVifCoordinatorMapFeatures();
+  }
+
   const source =
     state.dashboard?.map_features ||
     state.actividades ||
@@ -1254,6 +1505,13 @@ function getDashboardMapFeatures() {
       feature.attributes || {};
 
     if (!isVisibleActivityRow(row)) {
+      return false;
+    }
+
+    if (
+      state.dashboardRegionFilter &&
+      !sameRegion(row.direccion_regional || getActivityRegion(row), state.dashboardRegionFilter)
+    ) {
       return false;
     }
 
@@ -1289,14 +1547,60 @@ function renderDashboardMapFromFilters() {
 
 async function loadDelegationBreakdown(delegation) {
   try {
-    const dashboard =
-      await api.getDashboard(delegation);
-
     toggleBreakdownPanel(true);
 
-    renderActivityBreakdownTable(
-      dashboard.activity_breakdown || []
-    );
+    if (isVifNationalCoordinator()) {
+      const quarter = getCurrentVifaQuarter();
+      const details = buildVifaQuarterDetails().filter((row) =>
+        row.trimestre === quarter &&
+        sameDelegation(row.delegacion, delegation) &&
+        (
+          !state.dashboardActivityFilter ||
+          normalize(row.actividad) === normalize(state.dashboardActivityFilter)
+        )
+      );
+
+      const container = $("activity-summary");
+      if (container) {
+        container.innerHTML = details.length
+          ? `
+            <div class="panel-header" style="margin-bottom:12px;">
+              <div>
+                <span class="panel-kicker">VIF ${escapeHtml(quarter)}</span>
+                <h3>${escapeHtml(delegation)} · Actividades del trimestre</h3>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Actividad</th>
+                    <th>Línea base / control</th>
+                    <th>Avance</th>
+                    <th>%</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${details.map((row) => `
+                    <tr>
+                      <td>${escapeHtml(row.actividad || row.codigo)}</td>
+                      <td>${row.control_trimestral ? "Control trimestral" : formatNumber(row.linea_base)}</td>
+                      <td>${row.control_trimestral ? (row.avance > 0 ? "Cumplido" : "Sin registro") : formatNumber(row.avance_computable)}</td>
+                      <td><strong>${formatVifaPercentage(row.porcentaje)}</strong></td>
+                      <td>${escapeHtml(row.estado)}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          `
+          : `<div class="module-empty">No hay actividades VIF disponibles para esta delegación.</div>`;
+      }
+    } else {
+      const dashboard = await api.getDashboard(delegation);
+      renderActivityBreakdownTable(dashboard.activity_breakdown || []);
+    }
 
     $("activity-breakdown-panel")
       ?.scrollIntoView({
