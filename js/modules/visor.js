@@ -1202,8 +1202,19 @@ function applyNationalViewerFilters() {
 
   renderNationalViewerKpis(delegationRows, visibleFeatures);
 
+  // El filtro de cumplimiento del Visor se calcula a nivel de delegación.
+  // El mapa debe usar exactamente ese mismo estado consolidado y no volver
+  // a clasificar cada actividad de manera individual.
+  const complianceStatusByDelegation = Object.fromEntries(
+    delegationRows.map((row) => [
+      getDelegationCanonicalKey(row.delegacion),
+      row.estado_codigo
+    ])
+  );
+
   renderMap(visibleFeatures, {
-    colorByCompliance: state.nationalViewerFilters.activityType !== "ADICIONAL_NO_PROGRAMADA"
+    colorByCompliance: state.nationalViewerFilters.activityType !== "ADICIONAL_NO_PROGRAMADA",
+    complianceStatusByDelegation
   });
 
   renderNationalViewerTable(delegationRows);
