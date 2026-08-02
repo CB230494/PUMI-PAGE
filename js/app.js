@@ -1,19 +1,21 @@
-// PUMI modular: arranque controlado y compatible con GitHub Pages.
-// ApiService se carga dinámicamente antes de inicializar los módulos.
+// PUMI modular: arranque controlado para GitHub Pages.
+// Este archivo solo carga ApiService y los módulos existentes en /js.
 
-const MODULE_VERSION = "20260802-visor-nacional-cachefix-01";
+const MODULE_VERSION = "20260728-main13-inicio-01";
 
+// IMPORTANTE: estas rutas se insertan como <script> en el documento,
+// por eso deben partir desde la raíz de PUMI-PAGE con ./js/.
 const MODULES = [
-  "./core/core-v2.js",
-  "./modules/dashboard-shell.js",
-  "./modules/visor.js",
-  "./modules/dashboard-common.js",
-  "./modules/delegacion.js",
-  "./modules/revision.js",
-  "./modules/mapas.js",
-  "./modules/ui.js",
-  "./modules/informes.js",
-  "./modules/utils.js"
+  "./js/core/core.js",
+  "./js/modules/dashboard-shell.js",
+  "./js/modules/visor.js",
+  "./js/modules/dashboard-common.js",
+  "./js/modules/delegacion.js",
+  "./js/modules/revision.js",
+  "./js/modules/mapas.js",
+  "./js/modules/ui.js",
+  "./js/modules/informes.js",
+  "./js/modules/utils.js"
 ];
 
 function loadClassicScript(path) {
@@ -29,10 +31,13 @@ function loadClassicScript(path) {
 
 async function bootPumi() {
   try {
+    // app.js está dentro de /js, por eso ../services es correcto aquí.
     const apiModule = await import(`../services/api-service.js?v=${MODULE_VERSION}`);
+
     if (!apiModule?.ApiService) {
       throw new Error("ApiService no fue exportado correctamente.");
     }
+
     window.ApiService = apiModule.ApiService;
 
     for (const modulePath of MODULES) {
