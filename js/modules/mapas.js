@@ -60,10 +60,30 @@ function renderMap(features, options = {}) {
             return;
           }
 
+          const delegationKey =
+            getDelegationCanonicalKey(
+              group.delegacion
+            );
+
+          const forcedComplianceStatus =
+            options.complianceStatusByDelegation?.[delegationKey] || "";
+
+          const forcedComplianceColor =
+            normalize(forcedComplianceStatus) === "CUMPLE"
+              ? "#16a34a"
+              : normalize(forcedComplianceStatus) === "EN RIESGO"
+                ? "#f59e0b"
+                : normalize(forcedComplianceStatus) === "CRITICO"
+                  ? "#dc2626"
+                  : "";
+
           const color =
             options.colorByCompliance
-              ? getComplianceMarkerColor(
-                  group
+              ? (
+                  forcedComplianceColor ||
+                  getComplianceMarkerColor(
+                    group
+                  )
                 )
               : (
                   regionColors.get(
