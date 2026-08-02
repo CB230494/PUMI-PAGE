@@ -78,6 +78,54 @@ function shouldShowVifDashboardBlocks() {
   return !isNationalCoordinatorRole() || isVifNationalCoordinator();
 }
 
+
+function getCoordinatorAssignedProgram() {
+  return String(state.user?.program || state.user?.programa || "").trim();
+}
+
+function isPplProgramName(value = "") {
+  const n = normalize(value);
+  return n.includes("PLAN DE POLITICA LOCAL") || n === "PPL";
+}
+
+function coordinatorCanSeeProgram(program = "") {
+  if (!isNationalCoordinatorRole()) return true;
+  if (isVifNationalCoordinator()) return normalize(program) === "VIF";
+
+  const assigned = normalize(getCoordinatorAssignedProgram());
+  const target = normalize(program);
+
+  if (assigned === "DARE") {
+    return target === "DARE" || target === "GREAT/MPAS/DARE";
+  }
+
+  if (assigned === "GREAT/MPAS/DARE") {
+    return target === "GREAT/MPAS/DARE";
+  }
+
+  if (assigned === "PSCC") {
+    return target === "PSCC";
+  }
+
+  if (isPplProgramName(assigned)) {
+    return isPplProgramName(target);
+  }
+
+  return target === assigned;
+}
+
+function getCoordinatorProgramLabel() {
+  if (!isNationalCoordinatorRole()) return ANNUAL_PROGRAMS_LABEL;
+  if (isVifNationalCoordinator()) return "VIF";
+
+  const assigned = normalize(getCoordinatorAssignedProgram());
+  if (assigned === "DARE") return "DARE y GREAT/MPAS/DARE";
+  if (assigned === "GREAT/MPAS/DARE") return "GREAT/MPAS/DARE";
+  if (assigned === "PSCC") return "PSCC";
+  if (isPplProgramName(assigned)) return "PPL";
+  return getCoordinatorAssignedProgram() || "Programa asignado";
+}
+
 function formatVifaPercentage(value) {
   const percentage = numberValue(value);
   if (percentage > 0 && percentage < 1) {
@@ -89,12 +137,13 @@ function formatVifaPercentage(value) {
 function renderKpisFromDashboard(kpis) {
   const quarter = getCurrentVifaQuarter();
   const vifSummary = buildVifaQuarterSummary().find((item) => item.trimestre === quarter);
+  const programLabel = getCoordinatorProgramLabel();
   const cards = [
     ["Registros", numberValue(kpis.registros)],
-    [`Meta anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.meta)],
-    [`Avance anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.avance)],
-    [`Pendiente anual (${ANNUAL_PROGRAMS_LABEL})`, numberValue(kpis.pendiente)],
-    [`% anual (${ANNUAL_PROGRAMS_LABEL})`, `${numberValue(kpis.porcentaje_avance).toFixed(1)}%`],
+    [`Meta anual (${programLabel})`, numberValue(kpis.meta)],
+    [`Avance anual (${programLabel})`, numberValue(kpis.avance)],
+    [`Pendiente anual (${programLabel})`, numberValue(kpis.pendiente)],
+    [`% anual (${programLabel})`, `${numberValue(kpis.porcentaje_avance).toFixed(1)}%`],
     ["Participantes", numberValue(kpis.participantes)]
   ];
   if (
@@ -762,6 +811,7 @@ function renderProgramSummaryFromDashboard(programs) {
     (programs || []).filter(
       (item) =>
         normalize(item.programa) !== "VIF" &&
+        coordinatorCanSeeProgram(item.programa) &&
         numberValue(item.meta) > 0
     );
 
@@ -805,7 +855,9 @@ function renderProgramSummaryFromDashboard(programs) {
     )
     .join("");
 
-  const vifaHtml = renderVifaProgramSummaryCard();
+  const vifaHtml = shouldShowVifDashboardBlocks()
+    ? renderVifaProgramSummaryCard()
+    : "";
 
   $("program-summary").innerHTML =
     regularHtml || vifaHtml
@@ -1372,6 +1424,7 @@ function getDashboardActivityNames() {
   return [
     ...new Set(
       getRows()
+        .filter((row) => coordinatorCanSeeProgram(row.programa))
         .map((row) =>
           String(row.actividad || "").trim()
         )
@@ -1505,6 +1558,10 @@ function getDashboardMapFeatures() {
       feature.attributes || {};
 
     if (!isVisibleActivityRow(row)) {
+      return false;
+    }
+
+    if (!coordinatorCanSeeProgram(row.programa)) {
       return false;
     }
 
