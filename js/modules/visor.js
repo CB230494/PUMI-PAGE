@@ -163,123 +163,75 @@ function isSameNationalViewerVifActivity(row = {}, planning = {}, resolvedActivi
 
 function getNationalViewerVifPlanningRows() {
   const quarter = getNationalViewerCurrentQuarter();
-  const executionRows = (state.actividades || [])
-    .filter(isNationalViewerVisibleActivityFeature)
-    .map((feature) => ({
-      ...(feature.attributes || {}),
-      __geometry: feature.geometry || null
-    }))
-    .filter((row) => isNationalViewerVifRow(row) && !isNationalViewerAdditionalRow(row));
 
-  const optionByCode = new Map(
-    (state.activityOptions || [])
-      .filter((option) => isNationalViewerVifRow(option))
-      .map((option) => [getNationalViewerVifPlanningKey(option), option])
-      .filter(([key]) => Boolean(key))
-  );
+  /*
+   * IMPORTANTE:
+   * El Visor no vuelve a reconstruir VIF por su cuenta.
+   * Usa el mismo detalle trimestral que ya utiliza el resto de PUMI
+   * (planificación local + ejecución VALIDADA en PUMI_ACTIVIDADES).
+   * Así las actividades 16, 17 y 18 de control trimestral se incluyen
+   * junto con las 5 actividades de línea base del T3.
+   */
+  const details = typeof buildVifaQuarterDetails === "function"
+    ? buildVifaQuarterDetails()
+    : [];
 
-  const planningMap = new Map();
-
-  for (const item of (state.vifaHistorico || [])) {
-    const itemQuarter = normalize(
-      item.trimestre || item.trimestre_programado || item.trimestre_programado_vifa || ""
-    );
-
-    if (itemQuarter && itemQuarter !== quarter) continue;
-
-    const delegation = String(item.delegacion || "").trim();
-    if (!delegation) continue;
-
-    const activityKey = getNationalViewerVifPlanningKey(item);
-    if (!activityKey) continue;
-
-    const key = `${getDelegationCanonicalKey(delegation)}|||${activityKey}`;
-
-    /* Dedupe estricto por delegación + actividad. Esto evita que variantes
-       repetidas del catálogo eleven el total nacional por encima de 8 por delegación. */
-    if (!planningMap.has(key)) {
-      planningMap.set(key, item);
-    }
-  }
-
-  return [...planningMap.values()].map((item, index) => {
-    const delegation = String(item.delegacion || "").trim();
-    const planningKey = getNationalViewerVifPlanningKey(item);
-    const option = optionByCode.get(planningKey) || {};
-    const activity = String(
-      option.actividad || option.nombre_actividad || item.actividad || item.nombre_actividad ||
-      `Actividad ${item.numero_actividad || planningKey}`
-    ).trim();
-
-    const metaRaw = numberValue(item.linea_base ?? option.linea_base ?? option.meta);
-    const isControl = Boolean(
-      item.control_trimestral || option.es_control_trimestral ||
-      normalize(item.tipo_medicion || option.tipo_medicion || option.tipo_medicion_vifa) === "CONTROL_TRIMESTRAL"
-    );
-
-    const matches = executionRows.filter((row) => {
-      if (!sameDelegation(row.delegacion, delegation)) return false;
-
-      const rowQuarter = normalize(
-        row.trimestre_ejecucion_vifa || row.trimestre_programado_vifa || ""
+  return details
+    .filter((item) => normalize(item.trimestre) === quarter)
+    .map((item, index) => {
+      const delegation = String(item.delegacion || "").trim();
+      const isControl = Boolean(item.control_trimestral);
+      const lineBase = isControl ? 1 : numberValue(item.linea_base);
+      const validatedAdvance = isControl
+        ? (numberValue(item.avance_computable) > 0 ? 1 : 0)
+        : numberValue(item.avance_computable);
+      const percentage = Math.max(
+        0,
+        Math.min(numberValue(item.porcentaje), 100)
       );
-      if (rowQuarter && rowQuarter !== quarter) return false;
+      const progressRatio = percentage / 100;
 
-      return isSameNationalViewerVifActivity(row, { ...item, ...option }, activity);
+      return {
+        id_pumi: `VIF-PLAN-${quarter}-${index + 1}`,
+        programa: "VIF",
+        actividad: String(item.actividad || item.codigo || "Actividad VIF").trim(),
+        direccion_regional:
+          item.direccion_regional ||
+          getRegionFromDelegationCatalog(delegation) ||
+          "",
+        delegacion: delegation,
+
+        /* Estos valores permiten que el mapa muestre línea base/avance real. */
+        meta: lineBase,
+        avance: validatedAdvance,
+        pendiente: Math.max(lineBase - Math.min(validatedAdvance, lineBase), 0),
+        porcentaje_cumplimiento: percentage,
+
+        /* Se marca como fila de consulta para que mapas.js sume meta/avance
+           de la obligación sintética sin alterar PUMI_ACTIVIDADES. */
+        archivo_origen: `Planificación VIF ${quarter}`,
+        estado_registro: "ACTIVO",
+        estado_flujo:
+          percentage >= 100
+            ? "VALIDADO_NACIONAL"
+            : percentage > 0
+              ? "VALIDADO_NACIONAL"
+              : "PLANIFICADO",
+
+        codigo_actividad_vifa: item.codigo || "",
+        trimestre_programado_vifa: quarter,
+        trimestre_ejecucion_vifa: quarter,
+        tipo_medicion_vifa: isControl ? "TRIMESTRAL" : "LINEA_BASE",
+        linea_base_vifa: isControl ? 0 : numberValue(item.linea_base),
+
+        __isVifPlanning: true,
+        __vifControl: isControl,
+        __vifCompleted: percentage >= 100,
+        __vifHasAdvance: percentage > 0,
+        __vifProgress: progressRatio,
+        __geometry: getNationalViewerDelegationGeometry(delegation)
+      };
     });
-
-    let validatedAmount = 0;
-    let reviewAmount = 0;
-
-    for (const row of matches) {
-      const amount = isControl ? 1 : getNationalViewerExecutionAmount(row);
-      if (isNationalViewerValidated(row)) validatedAmount += amount;
-      else if (isNationalViewerInReview(row)) reviewAmount += amount;
-    }
-
-    const meta = isControl ? 1 : metaRaw;
-    const validatedForProgress = isControl
-      ? (validatedAmount > 0 ? 1 : 0)
-      : validatedAmount;
-    const reviewForProgress = isControl
-      ? (reviewAmount > 0 ? 1 : 0)
-      : reviewAmount;
-
-    const progressRatio = meta > 0
-      ? Math.min(validatedForProgress / meta, 1)
-      : 0;
-
-    return {
-      id_pumi: `VIF-PLAN-${index + 1}`,
-      programa: "VIF",
-      actividad: activity,
-      direccion_regional: item.direccion_regional || getRegionFromDelegationCatalog(delegation) || "",
-      delegacion: delegation,
-      meta,
-      avance: validatedForProgress,
-      avance_validado: validatedForProgress,
-      avance_en_revision: reviewForProgress,
-      pendiente: Math.max(meta - Math.min(validatedForProgress, meta), 0),
-      porcentaje_cumplimiento: progressRatio * 100,
-      estado_registro: "ACTIVO",
-      estado_flujo: validatedAmount > 0
-        ? "VALIDADO_NACIONAL"
-        : reviewAmount > 0
-          ? "PENDIENTE_NACIONAL"
-          : "PLANIFICADO",
-      codigo_actividad_vifa:
-        item.codigo_actividad_vifa || item.codigo_actividad || option.codigo_actividad_vifa || option.codigo_actividad || "",
-      trimestre_programado_vifa: quarter,
-      tipo_medicion_vifa: isControl ? "CONTROL_TRIMESTRAL" : "LINEA_BASE",
-      linea_base_vifa: metaRaw,
-      __isVifPlanning: true,
-      __vifControl: isControl,
-      __vifCompleted: progressRatio >= 1,
-      __vifHasAdvance: validatedAmount > 0 || reviewAmount > 0,
-      __vifProgress: progressRatio,
-      __geometry: getNationalViewerDelegationGeometry(delegation)
-    };
-  });
 }
 
 function getNationalViewerFeatureFromRow(row = {}) {
@@ -295,6 +247,32 @@ function getNationalViewerRowRegion(row = {}) {
   return getActivityRegion(row) || row.direccion_regional || "";
 }
 
+function getNationalViewerRegionCanonicalKey(region = "") {
+  const clean = String(region || "").trim();
+  if (!clean) return "";
+
+  const number = getRegionNumber(clean);
+  if (number === null) return "";
+
+  if (number === 1) {
+    const normalized = normalizeTerritory(clean);
+    if (normalized.includes("CENTRAL")) return "REGION-1-CENTRAL";
+    if (normalized.includes("NORTE")) return "REGION-1-NORTE";
+    if (normalized.includes("SUR")) return "REGION-1-SUR";
+
+    /* DR1 genérico no se cuenta como una región adicional. */
+    return "";
+  }
+
+  /* La estructura institucional vigente llega hasta la DR12.
+     3 territorios de DR1 + DR2...DR12 = 14 regiones. */
+  if (number >= 2 && number <= 12) {
+    return `REGION-${number}`;
+  }
+
+  return "";
+}
+
 function getNationalViewerVisibleTerritory(features = []) {
   const regions = new Set();
   const delegations = new Set();
@@ -303,11 +281,16 @@ function getNationalViewerVisibleTerritory(features = []) {
     const row = feature?.attributes || {};
     const region = getNationalViewerRowRegion(row);
     const delegation = String(row.delegacion || "").trim();
-    if (region) regions.add(normalize(region));
+    const regionKey = getNationalViewerRegionCanonicalKey(region);
+
+    if (regionKey) regions.add(regionKey);
     if (delegation) delegations.add(getDelegationCanonicalKey(delegation));
   }
 
-  return { regions: regions.size, delegations: delegations.size };
+  return {
+    regions: regions.size,
+    delegations: delegations.size
+  };
 }
 
 function getNationalViewerAdditionalStatus(row = {}) {
@@ -765,78 +748,44 @@ function getNationalTerritoryCatalogRows() {
 }
 
 function getNationalRegionOptions() {
-  const options =
-    new Map();
+  const options = new Map();
 
   getNationalTerritoryCatalogRows()
-    .map(
-      (row) =>
-        String(
-          row.region || ""
-        ).trim()
-    )
+    .map((row) => String(row.region || "").trim())
     .filter(Boolean)
     .forEach((region) => {
-      const number =
-        getRegionNumber(region);
+      const key = getNationalViewerRegionCanonicalKey(region);
+      if (!key) return;
 
-      const regionName =
-        getRegionName(region);
+      const current = options.get(key);
 
-      /*
-       * Las tres Direcciones Regionales 1 comparten número,
-       * pero son territorios distintos: Central, Norte y Sur.
-       */
-      const key =
-        number === 1 && regionName
-          ? `REGION-1-${regionName}`
-          : number !== null
-            ? `REGION-${number}`
-            : regionName;
-
-      const current =
-        options.get(key);
-
-      if (
-        !current ||
-        region.length >
-          current.length
-      ) {
-        options.set(
-          key,
-          region
-        );
+      /* Preferimos el nombre institucional más descriptivo. */
+      if (!current || region.length > current.length) {
+        options.set(key, region);
       }
     });
 
-  return [
-    ...options.values()
-  ].sort((a, b) => {
-    const aNumber =
-      getRegionNumber(a);
+  return [...options.entries()]
+    .sort(([keyA, a], [keyB, b]) => {
+      const aNumber = getRegionNumber(a);
+      const bNumber = getRegionNumber(b);
+      if (aNumber !== bNumber) return (aNumber ?? 999) - (bNumber ?? 999);
 
-    const bNumber =
-      getRegionNumber(b);
+      const orderDr1 = {
+        "REGION-1-CENTRAL": 1,
+        "REGION-1-NORTE": 2,
+        "REGION-1-SUR": 3
+      };
+      if (aNumber === 1 && bNumber === 1) {
+        return (orderDr1[keyA] || 99) - (orderDr1[keyB] || 99);
+      }
 
-    if (
-      aNumber !== null &&
-      bNumber !== null
-    ) {
-      return (
-        aNumber -
-        bNumber
-      );
-    }
-
-    return a.localeCompare(
-      b,
-      "es",
-      {
+      return a.localeCompare(b, "es", {
         numeric: true,
         sensitivity: "base"
-      }
-    );
-  });
+      });
+    })
+    .map(([, region]) => region);
 }
 
 function getNationalDelegationOptions(
@@ -1197,7 +1146,7 @@ function buildNationalViewerDelegationRows(features) {
     const vifProgramadas = vifRows.length;
     const vifCumplidas = vifRows.filter((r) => Boolean(r.__vifCompleted)).length;
     const vifConAvance = vifRows.filter((r) => Boolean(r.__vifHasAdvance) && !r.__vifCompleted).length;
-    const vifPending = Math.max(vifProgramadas - vifCumplidas, 0);
+    const vifPending = Math.max(vifProgramadas - vifCumplidas - vifConAvance, 0);
     const vifProgressSum = vifRows.reduce((t, r) => t + numberValue(r.__vifProgress), 0);
     const vifPercentage = vifProgramadas > 0 ? vifProgressSum / vifProgramadas : 0;
 
@@ -1268,160 +1217,35 @@ function applyNationalViewerFilters() {
 }
 
 function getDelegationCatalogTerritory() {
-  const filters =
-    state.nationalViewerFilters || {};
+  const filters = state.nationalViewerFilters || {};
+  const regionKeys = new Set();
+  const delegationKeys = new Set();
 
-  const rows =
-    (state.delegaciones || [])
-      .map((feature) => {
-        const attributes =
-          feature.attributes || {};
-
-        const delegation =
-          attributes.delegacion ??
-          attributes.Delegacion ??
-          attributes.DELEGACION ??
-          attributes.nombre_delegacion ??
-          attributes.NOMBRE_DELEGACION ??
-          attributes.nombre ??
-          attributes.Nombre ??
-          attributes.NOMBRE ??
-          "";
-
-        const region =
-          attributes.direccion_regional ??
-          attributes.Direccion_Regional ??
-          attributes.DIRECCION_REGIONAL ??
-          attributes.direccionRegional ??
-          attributes.region ??
-          attributes.Region ??
-          attributes.REGION ??
-          attributes.nombre_region ??
-          attributes.NOMBRE_REGION ??
-          "";
-
-        return {
-          delegation:
-            String(delegation || "").trim(),
-
-          region:
-            String(region || "").trim()
-        };
-      })
-      .filter(
-        (row) =>
-          Boolean(row.delegation)
-      );
-
-  const filtered =
-    rows.filter((row) => {
-      if (
-        filters.region &&
-        !sameRegion(
-          row.region,
-          filters.region
-        )
-      ) {
-        return false;
-      }
-
-      if (
-        filters.delegation &&
-        !sameDelegation(
-          row.delegation,
-          filters.delegation
-        )
-      ) {
-        return false;
-      }
-
-      return true;
-    });
-
-  const delegationKeys =
-    new Set(
-      filtered
-        .map(
-          (row) =>
-            getDelegationCanonicalKey(
-              row.delegation
-            )
-        )
-        .filter(Boolean)
+  for (const feature of state.delegaciones || []) {
+    const attributes = feature?.attributes || {};
+    const delegation = getCatalogFieldValue(
+      attributes,
+      "delegacion", "Delegacion", "Delegación", "DELEGACION",
+      "nombre_delegacion", "NOMBRE_DELEGACION", "nombre", "Nombre", "NOMBRE"
+    );
+    const region = getCatalogFieldValue(
+      attributes,
+      "direccion_regional", "Direccion_Regional", "Dirección regional", "DIRECCION_REGIONAL",
+      "direccionRegional", "region", "Region", "REGION", "nombre_region", "NOMBRE_REGION"
     );
 
-  const getCanonicalRegionKey = (region = "") => {
-    const number = getRegionNumber(region);
-    const name = getRegionName(region);
+    if (!delegation) continue;
+    if (filters.region && !sameRegion(region, filters.region)) continue;
+    if (filters.delegation && !sameDelegation(delegation, filters.delegation)) continue;
 
-    // Las tres DR1 son territorios distintos; las demás se consolidan por número.
-    if (number === 1 && name) return `REGION-1-${name}`;
-    if (number !== null) return `REGION-${number}`;
-    return normalize(region);
-  };
-
-  const regionKeys =
-    new Set(
-      filtered
-        .map((row) => getCanonicalRegionKey(row.region))
-        .filter(Boolean)
-    );
-
-  /*
-   * Respaldo:
-   * si la capa de delegaciones no trae el nombre de la región,
-   * las regiones se cuentan desde todas las actividades cargadas,
-   * sin excluir registros por meta 0.
-   */
-  if (regionKeys.size === 0) {
-    (state.actividades || [])
-      .forEach((feature) => {
-        const attributes =
-          feature.attributes || {};
-
-        const region =
-          getActivityRegion(attributes);
-
-        const delegation =
-          String(
-            attributes.delegacion ||
-            ""
-          ).trim();
-
-        if (
-          filters.region &&
-          !sameRegion(
-            region,
-            filters.region
-          )
-        ) {
-          return;
-        }
-
-        if (
-          filters.delegation &&
-          !sameDelegation(
-            delegation,
-            filters.delegation
-          )
-        ) {
-          return;
-        }
-
-        if (region) {
-          regionKeys.add(
-            getCanonicalRegionKey(region)
-          );
-        }
-      });
+    const regionKey = getNationalViewerRegionCanonicalKey(region);
+    if (regionKey) regionKeys.add(regionKey);
+    delegationKeys.add(getDelegationCanonicalKey(delegation));
   }
 
   return {
-    regions:
-      regionKeys.size,
-
-    delegations:
-      delegationKeys.size
+    regions: regionKeys.size,
+    delegations: delegationKeys.size
   };
 }
 
