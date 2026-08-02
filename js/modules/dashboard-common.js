@@ -79,51 +79,37 @@ function shouldShowVifDashboardBlocks() {
 }
 
 
-function getCoordinatorAssignedProgram() {
-  return String(state.user?.program || state.user?.programa || "").trim();
-}
-
-function isPplProgramName(value = "") {
-  const n = normalize(value);
-  return n.includes("PLAN DE POLITICA LOCAL") || n === "PPL";
-}
-
-function coordinatorCanSeeProgram(program = "") {
-  if (!isNationalCoordinatorRole()) return true;
-  if (isVifNationalCoordinator()) return normalize(program) === "VIF";
-
-  const assigned = normalize(getCoordinatorAssignedProgram());
-  const target = normalize(program);
-
-  if (assigned === "DARE") {
-    return target === "DARE" || target === "GREAT/MPAS/DARE";
+function getAnnualProgramsLabelForCurrentScope() {
+  if (!isNationalCoordinatorRole()) {
+    return ANNUAL_PROGRAMS_LABEL;
   }
 
-  if (assigned === "GREAT/MPAS/DARE") {
-    return target === "GREAT/MPAS/DARE";
+  const program = normalize(state.user?.program || state.user?.programa || "");
+
+  if (program === "VIF" || program === "VIFA") {
+    return "VIF";
   }
 
-  if (assigned === "PSCC") {
-    return target === "PSCC";
+  if (program === "DARE") {
+    return "DARE y GREAT/MPAS/DARE";
   }
 
-  if (isPplProgramName(assigned)) {
-    return isPplProgramName(target);
+  if (program === "GREAT/MPAS/DARE" || program === "GREAT MPAS DARE") {
+    return "GREAT/MPAS/DARE";
   }
 
-  return target === assigned;
-}
+  if (program === "PSCC") {
+    return "PSCC";
+  }
 
-function getCoordinatorProgramLabel() {
-  if (!isNationalCoordinatorRole()) return ANNUAL_PROGRAMS_LABEL;
-  if (isVifNationalCoordinator()) return "VIF";
+  if (
+    program === "PLAN DE POLITICA LOCAL E IMPLEMENTACION DE LA POLITICA LOCAL DE SEGURIDAD" ||
+    program === "PPL"
+  ) {
+    return "PPL";
+  }
 
-  const assigned = normalize(getCoordinatorAssignedProgram());
-  if (assigned === "DARE") return "DARE y GREAT/MPAS/DARE";
-  if (assigned === "GREAT/MPAS/DARE") return "GREAT/MPAS/DARE";
-  if (assigned === "PSCC") return "PSCC";
-  if (isPplProgramName(assigned)) return "PPL";
-  return getCoordinatorAssignedProgram() || "Programa asignado";
+  return String(state.user?.program || state.user?.programa || ANNUAL_PROGRAMS_LABEL).trim();
 }
 
 function formatVifaPercentage(value) {
@@ -137,13 +123,12 @@ function formatVifaPercentage(value) {
 function renderKpisFromDashboard(kpis) {
   const quarter = getCurrentVifaQuarter();
   const vifSummary = buildVifaQuarterSummary().find((item) => item.trimestre === quarter);
-  const programLabel = getCoordinatorProgramLabel();
   const cards = [
     ["Registros", numberValue(kpis.registros)],
-    [`Meta anual (${programLabel})`, numberValue(kpis.meta)],
-    [`Avance anual (${programLabel})`, numberValue(kpis.avance)],
-    [`Pendiente anual (${programLabel})`, numberValue(kpis.pendiente)],
-    [`% anual (${programLabel})`, `${numberValue(kpis.porcentaje_avance).toFixed(1)}%`],
+    [`Meta anual (${getAnnualProgramsLabelForCurrentScope()})`, numberValue(kpis.meta)],
+    [`Avance anual (${getAnnualProgramsLabelForCurrentScope()})`, numberValue(kpis.avance)],
+    [`Pendiente anual (${getAnnualProgramsLabelForCurrentScope()})`, numberValue(kpis.pendiente)],
+    [`% anual (${getAnnualProgramsLabelForCurrentScope()})`, `${numberValue(kpis.porcentaje_avance).toFixed(1)}%`],
     ["Participantes", numberValue(kpis.participantes)]
   ];
   if (
@@ -185,10 +170,10 @@ function renderKpisFromLocal() {
 
   const cards = [
     ["Registros", rows.length],
-    [`Meta anual (${ANNUAL_PROGRAMS_LABEL})`, meta],
-    [`Avance anual (${ANNUAL_PROGRAMS_LABEL})`, advance],
-    [`Pendiente anual (${ANNUAL_PROGRAMS_LABEL})`, pending],
-    [`% anual (${ANNUAL_PROGRAMS_LABEL})`, `${percentage.toFixed(1)}%`],
+    [`Meta anual (${getAnnualProgramsLabelForCurrentScope()})`, meta],
+    [`Avance anual (${getAnnualProgramsLabelForCurrentScope()})`, advance],
+    [`Pendiente anual (${getAnnualProgramsLabelForCurrentScope()})`, pending],
+    [`% anual (${getAnnualProgramsLabelForCurrentScope()})`, `${percentage.toFixed(1)}%`],
     ["Participantes", participants]
   ];
 
@@ -811,7 +796,6 @@ function renderProgramSummaryFromDashboard(programs) {
     (programs || []).filter(
       (item) =>
         normalize(item.programa) !== "VIF" &&
-        coordinatorCanSeeProgram(item.programa) &&
         numberValue(item.meta) > 0
     );
 
@@ -855,9 +839,7 @@ function renderProgramSummaryFromDashboard(programs) {
     )
     .join("");
 
-  const vifaHtml = shouldShowVifDashboardBlocks()
-    ? renderVifaProgramSummaryCard()
-    : "";
+  const vifaHtml = renderVifaProgramSummaryCard();
 
   $("program-summary").innerHTML =
     regularHtml || vifaHtml
@@ -1424,7 +1406,6 @@ function getDashboardActivityNames() {
   return [
     ...new Set(
       getRows()
-        .filter((row) => coordinatorCanSeeProgram(row.programa))
         .map((row) =>
           String(row.actividad || "").trim()
         )
@@ -1558,10 +1539,6 @@ function getDashboardMapFeatures() {
       feature.attributes || {};
 
     if (!isVisibleActivityRow(row)) {
-      return false;
-    }
-
-    if (!coordinatorCanSeeProgram(row.programa)) {
       return false;
     }
 
