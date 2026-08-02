@@ -218,7 +218,7 @@ function getNationalViewerVifPlanningRows() {
       programa: "VIF",
       actividad: activity,
       direccion_regional: item.direccion_regional || getRegionFromDelegationCatalog(delegation) || "",
-      delegacion,
+      delegacion: delegation,
       meta,
       avance: validatedForProgress,
       avance_validado: validatedForProgress,
