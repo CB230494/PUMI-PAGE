@@ -216,7 +216,7 @@ function getNationalViewerVifPlanningRows() {
     return {
       id_pumi: `VIF-PLAN-${index + 1}`,
       programa: "VIF",
-      actividad,
+      actividad: activity,
       direccion_regional: item.direccion_regional || getRegionFromDelegationCatalog(delegation) || "",
       delegacion,
       meta,
