@@ -34,7 +34,7 @@ function renderVifCoordinatorDashboard() {
   };
 
   renderKpiCards([
-    [`VIF ${quarter}`, `${numberValue(summary.porcentaje).toFixed(1)}%`],
+    [`VIF ${quarter}`, formatVifaPercentage(summary.porcentaje)],
     ["Actividades programadas", numberValue(summary.programadas)],
     ["Cumplidas", numberValue(summary.cumplidas)],
     ["Con avance", numberValue(summary.en_proceso)],
@@ -58,8 +58,24 @@ function renderVifCoordinatorDashboard() {
     `;
   }
 
-  renderStatusSummaryFromLocal();
-  renderMap(getVifaValidatedRows());
-  renderDelegationOverview([]);
+  const vifRows = getRows().filter((row) =>
+    normalize(row.programa) === "VIF" &&
+    !isHistorical(row) &&
+    (
+      !state.dashboardRegionFilter ||
+      sameRegion(row.direccion_regional, state.dashboardRegionFilter)
+    )
+  );
+  const statuses = {};
+  for (const row of vifRows) {
+    const label = workflowLabel(row);
+    statuses[label] = (statuses[label] || 0) + 1;
+  }
+  renderStatusSummaryFromDashboard(statuses);
+
+  // El mismo panel/mismo mapa que los demás coordinadores, pero construido
+  // con las 8 obligaciones VIF del trimestre por cada delegación.
+  renderDelegationOverview(buildVifCoordinatorDelegationRows());
+  renderDashboardMapFromFilters();
 }
 
