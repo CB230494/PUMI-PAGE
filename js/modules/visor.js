@@ -122,6 +122,45 @@ function getNationalViewerVifPlanningKey(row = {}) {
   return normalize(row.actividad || row.nombre_actividad || "");
 }
 
+/*
+ * Firma tolerante para cruzar planificación VIF con la ejecución real.
+ * En fuentes históricas hay variantes como "Charla sobre trata..." y
+ * "Charla trata..." que representan la misma actividad.
+ */
+function getNationalViewerVifActivitySignature(value = "") {
+  return normalize(value)
+    .replace(/\bSOBRE\b/g, " ")
+    .replace(/\bLA\b/g, " ")
+    .replace(/\bEL\b/g, " ")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSameNationalViewerVifActivity(row = {}, planning = {}, resolvedActivity = "") {
+  const rowCode = normalize(
+    row.codigo_actividad_vifa || row.codigo_actividad || row.codigo || ""
+  );
+  const planningCode = normalize(
+    planning.codigo_actividad_vifa || planning.codigo_actividad || planning.codigo || ""
+  );
+
+  if (rowCode && planningCode && rowCode === planningCode) return true;
+
+  const rowNumber = String(row.numero_actividad || "").trim();
+  const planningNumber = String(planning.numero_actividad || "").trim();
+  if (rowNumber && planningNumber && Number(rowNumber) === Number(planningNumber)) return true;
+
+  const rowSignature = getNationalViewerVifActivitySignature(
+    row.actividad || row.nombre_actividad || ""
+  );
+  const planningSignature = getNationalViewerVifActivitySignature(
+    resolvedActivity || planning.actividad || planning.nombre_actividad || ""
+  );
+
+  return Boolean(rowSignature && planningSignature && rowSignature === planningSignature);
+}
+
 function getNationalViewerVifPlanningRows() {
   const quarter = getNationalViewerCurrentQuarter();
   const executionRows = (state.actividades || [])
@@ -186,10 +225,7 @@ function getNationalViewerVifPlanningRows() {
       );
       if (rowQuarter && rowQuarter !== quarter) return false;
 
-      const rowKey = getNationalViewerVifPlanningKey(row);
-      if (rowKey && planningKey) return rowKey === planningKey;
-
-      return normalize(row.actividad) === normalize(activity);
+      return isSameNationalViewerVifActivity(row, { ...item, ...option }, activity);
     });
 
     let validatedAmount = 0;
@@ -218,7 +254,7 @@ function getNationalViewerVifPlanningRows() {
       programa: "VIF",
       actividad: activity,
       direccion_regional: item.direccion_regional || getRegionFromDelegationCatalog(delegation) || "",
-      delegacion: delegation,
+      delegacion,
       meta,
       avance: validatedForProgress,
       avance_validado: validatedForProgress,
@@ -1314,13 +1350,20 @@ function getDelegationCatalogTerritory() {
         .filter(Boolean)
     );
 
+  const getCanonicalRegionKey = (region = "") => {
+    const number = getRegionNumber(region);
+    const name = getRegionName(region);
+
+    // Las tres DR1 son territorios distintos; las demás se consolidan por número.
+    if (number === 1 && name) return `REGION-1-${name}`;
+    if (number !== null) return `REGION-${number}`;
+    return normalize(region);
+  };
+
   const regionKeys =
     new Set(
       filtered
-        .map(
-          (row) =>
-            normalize(row.region)
-        )
+        .map((row) => getCanonicalRegionKey(row.region))
         .filter(Boolean)
     );
 
@@ -1367,7 +1410,7 @@ function getDelegationCatalogTerritory() {
 
         if (region) {
           regionKeys.add(
-            normalize(region)
+            getCanonicalRegionKey(region)
           );
         }
       });
