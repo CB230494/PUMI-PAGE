@@ -1,6 +1,7 @@
 /* PUMI 2026 - módulo visor. Extraído sin cambiar lógica. */
 
 function renderNationalViewerDashboard() {
+  ensureNationalTrackingNavigation();
   ensureNationalViewerState();
   toggleBreakdownPanel(false);
   removeDelegationOverviewPanel();
@@ -1437,4 +1438,106 @@ function renderNationalViewerTable(rows) {
           <td><span class="national-compliance-badge national-compliance-${normalize(row.estado_codigo).toLowerCase().replace(/\s+/g, "-")}">${escapeHtml(row.estado)}</span></td>
         </tr>`).join("")}</tbody>
     </table></div>`;
+}
+
+/* =========================================================
+   INTEGRACIÓN DEL MÓDULO DE SEGUIMIENTO NACIONAL
+   Solo se habilita para el perfil Visor Nacional.
+   Se carga de forma aislada para no modificar app.js/core.js.
+========================================================= */
+
+let nationalTrackingModulePromise = null;
+
+function loadNationalTrackingModule() {
+  if (typeof window.renderNationalTrackingModule === "function") {
+    return Promise.resolve();
+  }
+
+  if (nationalTrackingModulePromise) {
+    return nationalTrackingModulePromise;
+  }
+
+  nationalTrackingModulePromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-pumi-module="seguimiento-nacional"]');
+
+    if (existing) {
+      existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", () => reject(new Error("No fue posible cargar Seguimiento Nacional.")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "./js/modules/seguimiento.js?v=20260802-seguimiento-nacional-01";
+    script.async = false;
+    script.dataset.pumiModule = "seguimiento-nacional";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("No fue posible cargar js/modules/seguimiento.js"));
+    document.head.appendChild(script);
+  });
+
+  return nationalTrackingModulePromise;
+}
+
+function ensureNationalTrackingNavigation() {
+  if (!isNationalViewerRole()) {
+    return;
+  }
+
+  const nav = $("sidebar-nav");
+  if (!nav || nav.querySelector('[data-page="seguimiento-nacional"]')) {
+    return;
+  }
+
+  const reportsButton = nav.querySelector('[data-page="informes"]');
+  const button = document.createElement("button");
+  button.className = "nav-item";
+  button.dataset.page = "seguimiento-nacional";
+  button.innerHTML = `
+    <span class="nav-icon">🧭</span>
+    <span class="nav-label">Seguimiento Nacional</span>
+  `;
+
+  if (reportsButton) {
+    nav.insertBefore(button, reportsButton);
+  } else {
+    nav.appendChild(button);
+  }
+
+  button.addEventListener("click", async () => {
+    document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+
+    state.currentPage = "seguimiento-nacional";
+    document.querySelectorAll(".page").forEach((page) => page.classList.remove("active"));
+    $("coming-page")?.classList.add("active");
+    if ($("page-title")) $("page-title").textContent = "Seguimiento Nacional";
+
+    if ($("coming-page")) {
+      $("coming-page").innerHTML = `
+        <article class="panel-card empty-state">
+          <div class="empty-icon">🧭</div>
+          <h2>Seguimiento Nacional</h2>
+          <p>Cargando módulo...</p>
+        </article>
+      `;
+    }
+
+    try {
+      await loadNationalTrackingModule();
+      if (typeof window.renderNationalTrackingModule !== "function") {
+        throw new Error("El módulo de seguimiento no quedó disponible.");
+      }
+      await window.renderNationalTrackingModule();
+    } catch (error) {
+      console.error("Seguimiento Nacional:", error);
+      if ($("coming-page")) {
+        $("coming-page").innerHTML = `
+          <article class="panel-card empty-state">
+            <h2>No fue posible abrir Seguimiento Nacional</h2>
+            <p>${escapeHtml(error.message)}</p>
+          </article>
+        `;
+      }
+    }
+  });
 }
