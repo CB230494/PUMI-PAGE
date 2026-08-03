@@ -187,7 +187,19 @@ function renderReportsModule() {
         </div>
       </section>
 
-      <div class="report-note"><strong>El informe incluirá:</strong> portada, resumen ejecutivo, indicadores, VIF por trimestre, actividades adicionales no programadas, distribución territorial, estados de validación y detalle.</div>
+      <section class="report-filter-section">
+        <div class="report-section-heading">
+          <span>4</span>
+          <div><strong>Observaciones del informe</strong><small>Campo opcional. Puede incorporar hasta 5 000 caracteres de análisis, aclaraciones o comentarios institucionales.</small></div>
+        </div>
+        <label class="form-grid-full">
+          Observaciones
+          <textarea id="report-observations" rows="9" maxlength="5000" placeholder="Digite aquí las observaciones que desea incorporar al informe PDF..."></textarea>
+          <small id="report-observations-counter">0 / 5 000 caracteres</small>
+        </label>
+      </section>
+
+      <div class="report-note"><strong>El informe incluirá:</strong> portada institucional con logos PUMI y Fuerza Pública, resumen ejecutivo, indicadores, VIF por trimestre, actividades adicionales no programadas, distribución territorial, estados de validación, observaciones del informe y detalle.</div>
       <div class="form-actions report-actions"><button id="download-report-pdf" class="btn btn-primary">📄 Generar y descargar informe PDF</button></div>
     </article>`;
 
@@ -214,6 +226,16 @@ function renderReportsModule() {
   $("report-program")?.addEventListener("change", refreshActivities);
   refreshActivities();
 
+  const observationsInput = $("report-observations");
+  const observationsCounter = $("report-observations-counter");
+  const refreshObservationsCounter = () => {
+    if (!observationsCounter) return;
+    const length = String(observationsInput?.value || "").length;
+    observationsCounter.textContent = `${new Intl.NumberFormat("es-CR").format(length)} / 5 000 caracteres`;
+  };
+  observationsInput?.addEventListener("input", refreshObservationsCounter);
+  refreshObservationsCounter();
+
   $("download-report-pdf")?.addEventListener("click", async () => {
     try {
       if (coordinator && !assignedProgram) throw new Error("El usuario coordinador no tiene un programa asignado.");
@@ -227,7 +249,8 @@ function renderReportsModule() {
         trimestre: $("report-quarter")?.value,
         estado: $("report-status")?.value,
         desde: $("report-from")?.value,
-        hasta: $("report-to")?.value
+        hasta: $("report-to")?.value,
+        observaciones: String($("report-observations")?.value || "").trim().slice(0, 5000)
       };
       await api.downloadPdfReport(params);
       showToast("Informe PDF generado correctamente.");
