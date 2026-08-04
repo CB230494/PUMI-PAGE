@@ -604,9 +604,7 @@ function buildVifaQuarterDetails() {
     }
 
     const item = obligations.get(key);
-    item.avance += item.control_trimestral
-      ? 1
-      : numberValue(row.avance_realizado);
+    item.avance += numberValue(row.avance_realizado);
   }
 
   return [...obligations.values()]
@@ -631,7 +629,7 @@ function buildVifaQuarterDetails() {
       return {
         ...item,
         avance_computable: item.control_trimestral
-          ? (item.avance > 0 ? 1 : 0)
+          ? item.avance
           : Math.min(item.avance, item.linea_base),
         porcentaje: percentage,
         estado: status
@@ -1013,7 +1011,7 @@ function renderVifaQuarterBreakdown() {
                 ${selectedDelegation ? "" : `<td><strong>${escapeHtml(row.delegacion || "")}</strong></td>`}
                 <td>${escapeHtml(row.actividad || row.codigo)}</td>
                 <td>${row.control_trimestral ? "Control trimestral" : formatNumber(row.linea_base)}</td>
-                <td>${row.control_trimestral ? (row.avance > 0 ? "Cumplido" : "Sin registro") : formatNumber(row.avance_computable)}</td>
+                <td>${row.control_trimestral ? (row.avance > 0 ? formatNumber(row.avance) : "Sin registro") : formatNumber(row.avance_computable)}</td>
                 <td><strong>${numberValue(row.porcentaje).toFixed(1)}%</strong></td>
                 <td>${escapeHtml(row.estado)}</td>
               </tr>
@@ -1558,7 +1556,7 @@ function getVifCoordinatorMapFeatures() {
       direccion_regional: row.direccion_regional,
       meta: row.control_trimestral ? 1 : numberValue(row.linea_base),
       avance: row.control_trimestral
-        ? (numberValue(row.avance) > 0 ? 1 : 0)
+        ? numberValue(row.avance)
         : numberValue(row.avance_computable),
       pendiente: row.control_trimestral
         ? (numberValue(row.avance) > 0 ? 0 : 1)
@@ -1636,7 +1634,7 @@ function getRegionalVifMapFeatures() {
       direccion_regional: row.direccion_regional,
       meta: row.control_trimestral ? 1 : numberValue(row.linea_base),
       avance: row.control_trimestral
-        ? (numberValue(row.avance) > 0 ? 1 : 0)
+        ? numberValue(row.avance)
         : numberValue(row.avance_computable),
       pendiente: row.control_trimestral
         ? (numberValue(row.avance) > 0 ? 0 : 1)
@@ -1753,7 +1751,7 @@ async function loadDelegationBreakdown(delegation) {
                     <tr>
                       <td>${escapeHtml(row.actividad || row.codigo)}</td>
                       <td>${row.control_trimestral ? "Control trimestral" : formatNumber(row.linea_base)}</td>
-                      <td>${row.control_trimestral ? (row.avance > 0 ? "Cumplido" : "Sin registro") : formatNumber(row.avance_computable)}</td>
+                      <td>${row.control_trimestral ? (row.avance > 0 ? formatNumber(row.avance) : "Sin registro") : formatNumber(row.avance_computable)}</td>
                       <td><strong>${formatVifaPercentage(row.porcentaje)}</strong></td>
                       <td>${escapeHtml(row.estado)}</td>
                     </tr>
