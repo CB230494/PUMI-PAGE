@@ -420,12 +420,12 @@ async function openReviewDetail(objectId) {
               ? `
                 <div class="progress-info-card progress-info-card-additional">
                   <div>
-                    <span>Avance validado</span>
-                    <strong>${formatNumber(progress.avance_validado)}</strong>
+                    <span>Tipo</span>
+                    <strong>Adicional no programada</strong>
                   </div>
                   <div>
-                    <span>En revisión</span>
-                    <strong>${formatNumber(progress.avance_en_revision)}</strong>
+                    <span>Planificación</span>
+                    <strong>No afecta meta ni pendiente</strong>
                   </div>
                 </div>
               `
