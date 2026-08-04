@@ -471,6 +471,7 @@ function getVifaValidatedRows() {
     (row) =>
       normalize(row.programa) === "VIF" &&
       !isHistorical(row) &&
+      !isAdditionalActivityRow(row) &&
       isNationalApproved(row) &&
       isVifaRecordInCurrentScope(row)
   );
