@@ -525,6 +525,9 @@ function getOptionReviewBreakdown(option) {
 
   if (!option) return result;
 
+  // El backend ya excluye las actividades adicionales de meta, avance,
+  // pendiente y disponible. Aquí solo las contamos para información visual;
+  // no se vuelven a restar porque eso inflaría artificialmente el disponible.
   const sameRows = (state.actividades || [])
     .map((feature) => feature?.attributes || feature || {})
     .filter((row) =>
@@ -549,24 +552,6 @@ function getOptionReviewBreakdown(option) {
       result.additionalValidated += amount;
     }
   }
-
-  // La API histórica puede traer el avance adicional mezclado dentro de los
-  // totales de planificación. En el formulario lo separamos para que una
-  // actividad adicional nunca reduzca el disponible de la actividad planificada.
-  result.plannedReview = Math.max(
-    numberValue(option.avance_en_revision) - result.additionalReview,
-    0
-  );
-
-  result.plannedValidated = Math.max(
-    numberValue(option.avance_validado) - result.additionalValidated,
-    0
-  );
-
-  result.available = Math.max(
-    numberValue(option.meta) - result.plannedValidated - result.plannedReview,
-    0
-  );
 
   return result;
 }
