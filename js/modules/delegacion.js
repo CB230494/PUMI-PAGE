@@ -707,9 +707,15 @@ function setupActivityForm(editingRow) {
         const label = fulfilled ? "Cumplido" : reviewing ? "En revisión" : "Pendiente";
         return `<div><span>T${number}</span><strong>${label}</strong></div>`;
       }).join("");
-      card.innerHTML = quarterCards;
-      $("activity-advance").value = 1;
-      $("activity-advance").disabled = true;
+      card.innerHTML = `
+        ${quarterCards}
+        <div><span>Avance validado</span><strong>${formatNumber(option.avance_validado)}</strong></div>
+        <div><span>En revisión</span><strong>${formatNumber(option.avance_en_revision)}</strong></div>
+        <div><span>Registro</span><strong>Abierto / acumulativo</strong></div>
+      `;
+      $("activity-advance").removeAttribute("max");
+      $("activity-advance").disabled = false;
+      if (!$("activity-advance").value) $("activity-advance").value = 1;
     } else {
       const breakdown = getOptionReviewBreakdown(option);
 
@@ -1549,7 +1555,7 @@ async function submitActivity(event) {
         : Boolean(selectedOption?.es_control_trimestral)
     ) && !isAdditional;
 
-    if (!isAdditional && !isQuarterlyVifa && quantity <= 0) {
+    if (!isAdditional && quantity <= 0) {
       errors.push("El avance realizado debe ser mayor a cero.");
     }
 
@@ -1685,7 +1691,7 @@ async function submitActivity(event) {
         $("activity-time").value,
 
       avance_realizado:
-        isQuarterlyVifa ? 1 : (isAdditional ? Math.max(quantity, 1) : quantity),
+        isAdditional ? Math.max(quantity, 1) : quantity,
 
       responsable:
         $("activity-responsible")
