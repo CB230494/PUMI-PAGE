@@ -471,7 +471,6 @@ function getVifaValidatedRows() {
     (row) =>
       normalize(row.programa) === "VIF" &&
       !isHistorical(row) &&
-      !isAdditionalActivityRow(row) &&
       isNationalApproved(row) &&
       isVifaRecordInCurrentScope(row)
   );
@@ -1177,6 +1176,156 @@ function renderSimpleBars(id, values) {
    DELEGACIONES EN PANEL - DESPLEGABLE LIMPIO
 ========================================================= */
 
+
+function getCoordinatorComplianceStatus(meta, advance) {
+  const safeMeta = numberValue(meta);
+  const percentage = safeMeta > 0 ? numberValue(advance) / safeMeta : 0;
+
+  if (percentage >= 0.5) return "CUMPLE";
+  if (percentage >= 0.25) return "EN RIESGO";
+  return "CRITICO";
+}
+
+function getCoordinatorComplianceByDelegation() {
+  const result = new Map();
+
+  if (!isNationalCoordinatorRole()) {
+    return result;
+  }
+
+  // VIF se mide por las obligaciones del trimestre actual, igual que el resto
+  // del panel VIF. El porcentaje consolidado de la delegación es el promedio
+  // de cumplimiento de sus obligaciones visibles.
+  if (isVifNationalCoordinator()) {
+    const quarter = getCurrentVifaQuarter();
+    const grouped = new Map();
+
+    for (const row of buildVifaQuarterDetails()) {
+      if (row.trimestre !== quarter) continue;
+      if (
+        state.dashboardRegionFilter &&
+        !sameRegion(row.direccion_regional, state.dashboardRegionFilter)
+      ) continue;
+      if (
+        state.dashboardActivityFilter &&
+        normalize(row.actividad) !== normalize(state.dashboardActivityFilter)
+      ) continue;
+
+      const key = getDelegationCanonicalKey(row.delegacion);
+      if (!key) continue;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, { meta: 0, advance: 0 });
+      }
+
+      const item = grouped.get(key);
+      item.meta += 1;
+      item.advance += Math.max(
+        0,
+        Math.min(numberValue(row.porcentaje) / 100, 1)
+      );
+    }
+
+    for (const [key, item] of grouped.entries()) {
+      result.set(
+        key,
+        getCoordinatorComplianceStatus(item.meta, item.advance)
+      );
+    }
+
+    return result;
+  }
+
+  // Programas anuales: replica el mismo principio de buildProgressRows(),
+  // pero conserva la delegación para poder clasificarla por cumplimiento.
+  const byActivity = new Map();
+
+  for (const row of getRows()) {
+    if (isAdditionalActivityRow(row)) continue;
+    if (normalize(row.programa) === "VIF") continue;
+    if (!isVisibleActivityRow(row)) continue;
+
+    if (
+      state.dashboardRegionFilter &&
+      !sameRegion(
+        row.direccion_regional || getActivityRegion(row),
+        state.dashboardRegionFilter
+      )
+    ) continue;
+
+    if (
+      state.dashboardActivityFilter &&
+      normalize(row.actividad) !== normalize(state.dashboardActivityFilter)
+    ) continue;
+
+    const delegationKey = getDelegationCanonicalKey(row.delegacion);
+    const program = normalize(row.programa);
+    const activity = normalize(row.actividad);
+    if (!delegationKey || !program || !activity) continue;
+
+    const key = `${delegationKey}|||${program}|||${activity}`;
+    if (!byActivity.has(key)) {
+      byActivity.set(key, {
+        delegationKey,
+        meta: 0,
+        advance: 0
+      });
+    }
+
+    const item = byActivity.get(key);
+    if (isHistorical(row)) {
+      item.meta += numberValue(row.meta);
+      item.advance += numberValue(row.avance);
+    } else if (isNationalApproved(row)) {
+      item.advance += numberValue(row.avance_realizado);
+    }
+  }
+
+  const grouped = new Map();
+  for (const item of byActivity.values()) {
+    if (!grouped.has(item.delegationKey)) {
+      grouped.set(item.delegationKey, { meta: 0, advance: 0 });
+    }
+    const total = grouped.get(item.delegationKey);
+    total.meta += numberValue(item.meta);
+    total.advance += numberValue(item.advance);
+  }
+
+  for (const [key, item] of grouped.entries()) {
+    result.set(
+      key,
+      getCoordinatorComplianceStatus(item.meta, item.advance)
+    );
+  }
+
+  return result;
+}
+
+function coordinatorDelegationMatchesCompliance(delegation) {
+  if (!isNationalCoordinatorRole()) return true;
+
+  const selected = String(state.dashboardComplianceFilter || "").trim();
+  if (!selected) return true;
+
+  const statuses = getCoordinatorComplianceByDelegation();
+  return normalize(statuses.get(getDelegationCanonicalKey(delegation))) === normalize(selected);
+}
+
+function filterCoordinatorFeaturesByCompliance(features) {
+  if (!isNationalCoordinatorRole() || !state.dashboardComplianceFilter) {
+    return features;
+  }
+
+  const statuses = getCoordinatorComplianceByDelegation();
+  const selected = normalize(state.dashboardComplianceFilter);
+
+  return (features || []).filter((feature) => {
+    const row = feature?.attributes || {};
+    const key = getDelegationCanonicalKey(row.delegacion);
+    return normalize(statuses.get(key)) === selected;
+  });
+}
+
 function renderDelegationOverview(delegations) {
   let panel = $("delegation-overview-panel");
 
@@ -1278,6 +1427,18 @@ function renderDelegationOverview(delegations) {
               .join("")}
           </select>
         </label>
+
+        ${isNationalCoordinatorRole() ? `
+          <label>
+            Cumplimiento
+            <select id="dashboard-compliance-select">
+              <option value="">Todos</option>
+              <option value="CUMPLE">Cumple: 50% o más</option>
+              <option value="EN RIESGO">En riesgo: 25% a 49.99%</option>
+              <option value="CRITICO">Crítico: menor al 25%</option>
+            </select>
+          </label>
+        ` : ""}
       </div>
 
       <div
@@ -1300,6 +1461,9 @@ function renderDelegationOverview(delegations) {
   const activitySelect =
     $("dashboard-activity-select");
 
+  const complianceSelect =
+    $("dashboard-compliance-select");
+
   const preview =
     $("dashboard-delegation-preview");
 
@@ -1307,13 +1471,24 @@ function renderDelegationOverview(delegations) {
     setSelectValue(regionSelect, state.dashboardRegionFilter || "");
   }
 
+  if (complianceSelect) {
+    setSelectValue(complianceSelect, state.dashboardComplianceFilter || "");
+  }
+
   function refreshDelegationOptions() {
     if (!delegationSelect) return;
 
     const selectedRegion = regionSelect?.value || state.dashboardRegionFilter || "";
-    const visibleDelegations = (delegations || []).filter((item) =>
-      !selectedRegion || sameRegion(item.direccion_regional, selectedRegion)
-    );
+    const visibleDelegations = (delegations || []).filter((item) => {
+      if (
+        selectedRegion &&
+        !sameRegion(item.direccion_regional, selectedRegion)
+      ) {
+        return false;
+      }
+
+      return coordinatorDelegationMatchesCompliance(item.delegacion);
+    });
 
     const currentValue = delegationSelect.value || state.dashboardDelegationFilter || "";
     delegationSelect.innerHTML = `
@@ -1345,6 +1520,7 @@ function renderDelegationOverview(delegations) {
 
   function applyDashboardFilters() {
     state.dashboardRegionFilter = regionSelect?.value || "";
+    state.dashboardComplianceFilter = complianceSelect?.value || "";
 
     state.dashboardDelegationFilter =
       delegationSelect?.value || "";
@@ -1469,7 +1645,22 @@ function renderDelegationOverview(delegations) {
 
   activitySelect?.addEventListener(
     "change",
-    applyDashboardFilters
+    () => {
+      state.dashboardActivityFilter = activitySelect.value || "";
+      state.dashboardDelegationFilter = "";
+      refreshDelegationOptions();
+      applyDashboardFilters();
+    }
+  );
+
+  complianceSelect?.addEventListener(
+    "change",
+    () => {
+      state.dashboardComplianceFilter = complianceSelect.value || "";
+      state.dashboardDelegationFilter = "";
+      refreshDelegationOptions();
+      applyDashboardFilters();
+    }
   );
 
   applyDashboardFilters();
@@ -1652,7 +1843,9 @@ function getRegionalVifMapFeatures() {
 
 function getDashboardMapFeatures() {
   if (isVifNationalCoordinator()) {
-    return getVifCoordinatorMapFeatures();
+    return filterCoordinatorFeaturesByCompliance(
+      getVifCoordinatorMapFeatures()
+    );
   }
 
   const source =
@@ -1702,7 +1895,10 @@ function getDashboardMapFeatures() {
   });
 
   const vifFeatures = getRegionalVifMapFeatures();
-  return [...regularFeatures, ...vifFeatures];
+  return filterCoordinatorFeaturesByCompliance([
+    ...regularFeatures,
+    ...vifFeatures
+  ]);
 }
 
 function renderDashboardMapFromFilters() {
